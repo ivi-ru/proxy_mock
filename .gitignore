@@ -1,5 +1,8 @@
 __pycache__/
 *.log
-.pytest_cache
-.coverage*
-.vscode
+*.pytest_*
+*.coverage*
+.venv/
+dist/
+.DS_Store
+.python-version
