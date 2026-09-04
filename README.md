@@ -1,5 +1,10 @@
 # 🛡️ Proxy Mock
 
+[![PyPI](https://img.shields.io/pypi/v/proxy_mock)](https://pypi.org/project/proxy_mock/)
+[![Python](https://img.shields.io/pypi/pyversions/proxy_mock)](https://pypi.org/project/proxy_mock/)
+[![CI](https://github.com/ivi-ru/proxy_mock/actions/workflows/ci.yml/badge.svg)](https://github.com/ivi-ru/proxy_mock/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **Proxy Mock** is a tool that combines a proxy server and a mock server.
 It suits automated tests, integration scenarios and local debugging of service-to-service calls.
 
