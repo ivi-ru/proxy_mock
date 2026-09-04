@@ -1,436 +1,318 @@
 # 🛡️ Proxy Mock
 
-**Proxy Mock** — это мощный и гибкий инструмент, сочетающий функции прокси-сервера и мок-сервера. Он позволяет эмулировать заранее настроенные API-эндпоинты, что делает его идеальным для тестирования и разработки интеграций.
+**Proxy Mock** is a tool that combines a proxy server and a mock server.
+It suits automated tests, integration scenarios and local debugging of service-to-service calls.
 
-## 📋 Основные возможности
+---
 
-- **Проксирование запросов**:  
-  Перенаправляйте запросы на указанный хост. Это позволяет интегрировать ваш сервис с реальными или тестовыми API, что удобно для отладки и проверки взаимодействий между системами.
+## 📋 Features
 
-- **Мокирование эндпоинтов**:  
-  Настраивайте и эмулируйте ответы для различных API с легкостью. Создавайте фиктивные ответы для специфичных эндпоинтов, что позволяет тестировать взаимодействие вашего приложения без необходимости обращаться к реальным сервисам.
+- **Request proxying** to an upstream host (`proxy_host`)
+- **Endpoint mocking** with flexible response configuration
+- **Rules** for returning different responses on the same path
+- **Response delay** (`timeout`) and **caching** (`cache_time`)
+- **Traffic capture** of incoming requests for later inspection
+- **Bounded in-memory traffic storage** (the last 1000 records by default)
 
-- **Хранение данных о входящих запросах**:  
-  Сохраняйте информацию о всех входящих запросах для последующего анализа. Это позволяет отслеживать и управлять запросами, а также диагностировать проблемы в случае необходимости.
+---
 
-- **Легкость интеграции**:  
-  Удобное взаимодействие с другими сервисами через API. Ваш прокси-сервис может быть легко интегрирован в существующие системы, обеспечивая гибкость и расширяемость.
+## ⚠️ Security
 
-## 🚀 Начало работы
+The tool is meant for a **trusted, isolated test environment** and is not designed to be exposed publicly. Before deploying it, keep in mind:
 
-### 📦 Предварительные требования
+- **No authentication.** The service endpoints (`/configure_mock`, `/storage*`, `/traffic*`, `/cache/clean`) are open to anyone with network access. Anybody can create, read and delete mocks and traffic.
+- **SSRF via `proxy_host`.** By default a request can be proxied to **any** host, including your internal network and the cloud metadata address (`169.254.169.254`). The host list can be restricted with `PROXY_MOCK_ALLOWED_PROXY_HOSTS` (disabled by default, meaning any host is allowed).
+- **Traffic holds sensitive data.** `/traffic` stores the full headers and bodies of incoming requests (including `Authorization` and `Cookie`), and they can be read without authorisation. Requests that matched no mock (the `404` responses) are recorded as well.
+- **Loop protection.** Proxying "to self" is detected through the `x-proxy-mock-chain` marker header and is aborted with `508 Loop Detected`.
 
-Убедитесь, что на вашем компьютере установлены следующие компоненты:
+**Recommendation:** run it inside a closed network perimeter only, never expose it to the internet, and narrow proxying with the allowlist where possible.
 
-- **Python** >= 3.9
-- **Poetry** ~ 1.8.x
+---
 
-### ⚙️ Установка и запуск
+## ⬆️ Migrating from 1.0.1
 
-Следуйте этим шагам, чтобы быстро развернуть проект в локальной среде разработки:
+The previously published 1.0.1 ran on Flask. The current 2.10.1 runs on FastAPI, and four
+changes break compatibility. What to fix in a project upgrading from 1.0.1:
 
-1. **Установка зависимостей**:
+| In 1.0.1 | In 2.10.1 |
+|---|---|
+| `GET /status` | `GET /proxy_mock` — no alias, the old path returns `404` |
+| `get_status()` | `get_proxy_mock()` — no alias |
+| `POST /configure_mock/binary` | `POST /configure_mock` with `Content-Type: application/octet-stream` |
+| `configure_binary_mock()` | `configure_mock()` — it serialises the body to msgpack itself |
 
-    Установите виртуальное окружение и все необходимые зависимости:
+Error messages are now in English: a missing mock returns `{"error": "No mock found for /<path>"}`
+instead of the previous Russian text. Code that matches on the message text needs updating.
+
+Everything else stays compatible: `POST /configure_mock`, `GET /storage`, `POST /storage/clean`,
+`GET /traffic`, `POST /traffic/clean` and the methods `configure_mock()`, `get_traffic()`,
+`get_storage()`, `clean_storage()`, `clean_traffic()` work as before. `get_traffic()` gained
+optional filters (`path`, `method`, `limit`), and calling it without arguments is unchanged.
+
+Environment requirements changed too: Python >= 3.11 instead of 3.9, and uvicorn instead of
+gunicorn. The full history is in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## 🚀 Getting started
+
+There are three ways to run proxy-mock:
+
+- **As a pip package** (simplest for automated tests, no Docker) — see "Running without Docker" below.
+- **In Docker** — see "Running in Docker" below.
+- **From source** (for working on proxy-mock itself) — see below.
+
+### 📦 Prerequisites (for running from source)
+
+Make sure the following are installed:
+
+- **Python** >= 3.11 (development happens on 3.14)
+- **uv** >= 0.9
+
+### ⚙️ Install and run from source
+
+1. **Install dependencies**
+
+    Create a virtual environment and install everything, including the dev group:
     ```bash
-    poetry install --no-root
+    uv sync
     ```
 
-2. **Активация виртуального окружения**:
+2. **Activate the virtual environment**
 
-    Активируйте ранее созданное виртуальное окружение:
+    Activate the generated `.venv` (or prefix commands with `uv run`):
     ```bash
-    poetry shell
+    source .venv/bin/activate
     ```
 
-3. **Запуск сервиса**:
+3. **Run the service**
 
-    Используйте Makefile для запуска сервиса:
+    Use the Makefile:
     ```bash
-    sudo apt install make
     make run
     ```
 
-### 🐳 Запуск в Docker
+### 🐳 Running in Docker
 
-Для быстрого развертывания сервиса в изолированном окружении используйте Docker.
+1. **Build the image and start the service**
 
-1. **Сборка Docker-образа**:
-
-    Чтобы собрать Docker-образ и запустить сервис, выполните следующую команду:
     ```bash
     make docker_run
     ```
 
-2. **Доступ к сервису**:
+2. **Reach the service**
 
-    После успешного запуска сервис будет доступен по адресу:
+    Once it is up, the service listens on:
     ```
     http://localhost:5000
     ```
+
+### 🐍 Running without Docker (as a pip package)
+
+Docker is not required for automated tests: proxy-mock is published as an ordinary Python package containing both the server and the clients.
+
+```bash
+pip install proxy_mock
+uvicorn proxy_mock.any_catcher:app --host 0.0.0.0 --port 5000 --workers 1
+```
+
+You can also start it straight from your tests with a session-scoped pytest fixture (free port, automatic shutdown):
+
+```python
+import socket
+import threading
+import time
+
+import pytest
+import uvicorn
+
+from proxy_mock.app import create_app
+from proxy_mock.client import ProxyMock
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+@pytest.fixture(scope="session")
+def proxy_mock_url():
+    port = _free_port()
+    config = uvicorn.Config(create_app(), host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    deadline = time.time() + 10
+    while not server.started:
+        if time.time() > deadline:
+            raise RuntimeError("proxy-mock failed to start in time")
+        time.sleep(0.05)
+
+    yield f"http://127.0.0.1:{port}"
+
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def proxy_mock(proxy_mock_url):
+    return ProxyMock(proxy_mock_url)
+```
+
+Using it in a test:
+
+```python
+def test_external_service(proxy_mock):
+    proxy_mock.configure_mock(path="/external/api", body={"answer": 42})
+    # ... point the application under test at proxy_mock_url and assert on its behaviour
+    traffic = proxy_mock.get_traffic(path="/external/api")
+    assert traffic["count"] == 1
+```
+
+**Requirements and limitations:**
+
+- Python **>= 3.11** in the test environment; on older interpreters pip will not find an installable version.
+- The package pulls server dependencies (`fastapi>=0.136`, `pydantic>=2.6`, `uvicorn`, `httpx2`). If your test project pins older versions, the resolver may conflict. In that case install proxy-mock into a separate environment (`uv tool install` / `pipx`) and run it as a subprocess.
+- Under parallel runs (pytest-xdist) start one instance per worker: the mock and traffic stores are global to an instance.
+
+### Free-threaded Python (optional)
+
+The service also runs on a free-threaded build of the interpreter (3.14t). The official
+`python` images on Docker Hub do not publish free-threaded variants, so the interpreter has to
+be installed separately, for example with uv:
+
+```bash
+uv python install 3.14t
+uv sync --python 3.14t
+```
+
+Uvicorn should be started with a single worker (`--workers 1`). To confirm the GIL is really
+disabled:
+
+```bash
+python scripts/check_gil.py
+```
+
+### Environment variables
+
+| Variable | Values | Description |
+|----------|--------|-------------|
+| `PROXY_MOCK_LOG_REQUESTS` | `full` (default), `minimal`, `off` | Logging level for incoming requests |
+| `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `POST /traffic/settings` |
+| `PROXY_MOCK_PROXY_TIMEOUT` | float, seconds (default `30`) | Timeout for outgoing proxied requests |
+| `PROXY_MOCK_ALLOWED_PROXY_HOSTS` | comma-separated host list (default: empty) | Allowlist of proxy targets. Empty means any host is allowed |
+| `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC` | `true` (default), `false` (`1/0`, `yes/no`, `on/off`) | Whether to record requests that matched no mock (the `404` response). Toggleable at runtime via `POST /traffic/settings` |
 
 ---
 
 # 📡 API
 
-Proxy Mock предоставляет простой и интуитивно понятный API для взаимодействия с сервером и управления конфигурациями мок-запросов. 
+Full request and response schemas are available in the auto-generated documentation while the service is running:
 
----
+- **Swagger UI** — `http://localhost:5000/docs`
+- **ReDoc** — `http://localhost:5000/redoc`
+- **OpenAPI JSON** — `http://localhost:5000/openapi.json`
 
-### 1. `/status` (GET)
+A short reference and the key examples follow.
 
-### Проверка доступности сервера прокси-мока
+## Service endpoints
 
-Этот эндпоинт используется для проверки текущего состояния сервера и его доступности. Также он возвращает информацию о версии сервера.
+| Method | URL | Purpose | Success response |
+|--------|-----|---------|------------------|
+| `GET` | `/proxy_mock` | Server availability and an instance summary | `200` — `{"success": true, "version": "...", "python_version": "...", "mocks_count": N, "traffic_count": N, "traffic_max_items": N}` |
+| `POST` | `/configure_mock` | Create a mock | `201` — `{"success": true, "path": "...", "data": {...}}` |
+| `PATCH` | `/configure_mock` | Amend an existing mock (it must already exist) | `200` — same shape as POST |
+| `GET` | `/storage` | List mocks. Query: `path` filters by path | `200` — `{"success": true, "data": {...}}` |
+| `DELETE` | `/storage` | Delete mocks. Query: `path` for one mock; without `path` all of them | `200` — `{"success": true, "data": {...}}`; `404` if the given mock does not exist |
+| `POST` | `/storage/clean` | Deprecated alias of `DELETE /storage` (same effect) | `200` — `{"success": true, "data": {...}}` |
+| `GET` | `/traffic` | Show captured traffic. Query: `path`, `method`, `limit` | `200` — `{"success": true, "count": N, "data": [...]}` |
+| `POST` | `/traffic/clean` | Clear the traffic store | `200` — `{"success": true, "data": []}` |
+| `GET` | `/traffic/settings` | Current traffic recording settings | `200` — `{"success": true, "data": {"record_unknown_traffic": true, "max_items": 1000}}` |
+| `POST` | `/traffic/settings` | Change traffic settings. Body: `{"record_unknown_traffic": bool}` and/or `{"max_items": int > 0}`; the update is partial | `200` — same shape as GET; `400` on malformed JSON, `422` on an invalid or empty body |
+| `POST` | `/cache/clean` | Invalidate the entire cache | `200` — `{"success": true}` |
+| `*` | `/<any path>` | Catch-all: returns a mock, proxies, or `404` | depends on the configuration (see below) |
 
-- **URL**: `/status`
-- **Метод**: `GET`
+**`/configure_mock` errors:**
 
-#### Ответ:
+- `400` — empty body or malformed JSON/msgpack: `{"success": false, "error": "..."}`
+- `415` — unsupported `Content-Type` (`application/json` or `application/octet-stream` is required)
+- `422` — the body failed validation (for example the required `path` is missing): `{"success": false, "error": [...]}`
 
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "success": true,
-        "version": "1.0.0"  // Версия сервера
-    }
-    ```
+## `/configure_mock` body
 
-  - **Описание полей**:
-    - **`success`**: `boolean`  
-      Параметр, указывающий на успешное выполнение запроса. Значение всегда `true`, если сервер доступен.
-    - **`version`**: `string`  
-      Версия текущего сервера. Может быть полезна для определения актуальности сервера и его компонентов.
+Content type: `application/json` or `application/octet-stream` (msgpack). The PATCH body is identical to POST.
 
----
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` (required) | `string` | Path the mock applies to |
+| `methods` | `list[string]` | HTTP methods (all by default) |
+| `mock_data.body` | `string \| dict \| list \| bytes \| null` | Response body |
+| `mock_data.status_code` | `int` | Response code (default `200`) |
+| `mock_data.headers` | `dict` | Response headers |
+| `extra_info` | `dict` | Arbitrary metadata (ends up in traffic) |
+| `proxy_host` | `string` (**absolute URL**) | Proxy the request to this host |
+| `timeout` | `float` | Delay before responding, seconds |
+| `cache_time` | `int` | Response cache lifetime, seconds |
+| `rules` | `list[dict]` | Rules producing different responses on one path |
 
-### 2. `/configure_mock` (POST)
+Each entry in `rules`:
 
-### Конфигурация мок-запроса в прокси-моке
+- **`input_data`** — the match condition: `methods`, `body`, `headers`, `query`, `proxy_host` (absolute URL), `timeout`.
+- **`output_data`** — the response: `body`, `status_code`, `headers`.
+- **`extra_info`** — rule metadata (appears in traffic as `rule_extra_info`).
+- **`priority`** — `int`, higher values are checked earlier (default `0`).
 
-Этот эндпоинт используется для настройки мок-запросов в прокси-моке. Можно указать путь, данные мока, дополнительную информацию, проксирующий хост и таймаут.
+Rules are sorted by descending `priority`, then by insertion order; the first match wins.
 
-- **URL**: `/configure_mock`
-- **Метод**: `POST`
-- **Тип контента**: `application/json`
+#### Example
 
-#### Тело запроса:
-
-- **JSON**:
-  - **`path`** (обязательный) — `string`:  
-    Путь, по которому будет применен мок-запрос.
-  - **`mock_data`** — `dict`:  
-    Данные мок-ответа:
-    - **`body`** — `string | dict | list`:  
-      Тело ответа, которое будет возвращено при совпадении пути.
-    - **`status_code`** — `integer`:  
-      Код состояния ответа.
-    - **`headers`** — `dict`:  
-      Заголовки ответа.
-  - **`extra_info`** — `dict` (опционально):  
-    Дополнительная информация о мок-запросе.
-  - **`proxy_host`** — `string` (опционально):  
-    URL проксирующего хоста, на который будет перенаправлен запрос.
-  - **`timeout`** — `float` (опционально):  
-    Время задержки перед отправкой ответа, в секундах.
-
-#### Пример запроса:
 ```json
 {
     "path": "/test/endpoint",
     "mock_data": {
-        "body": {
-            "message": "Hello, World!"
-        },
+        "body": {"message": "Hello, World!"},
         "status_code": 200,
-        "headers": {
-            "Content-Type": "application/json"
+        "headers": {"Content-Type": "application/json"}
+    },
+    "extra_info": {"service": "example_service"},
+    "timeout": 1.5,
+    "cache_time": 600,
+    "rules": [
+        {
+            "input_data": {
+                "methods": ["POST", "PUT"],
+                "body": {"message": "any data"},
+                "headers": {"X-App-Version": "870"},
+                "query": {"user": "1"}
+            },
+            "output_data": {
+                "body": {"message": "other data"},
+                "status_code": 201,
+                "headers": {"X-Request-ID": "123456"}
+            },
+            "extra_info": {"rule_request_id": "Request-id"},
+            "priority": 10
         }
-    },
-    "extra_info": {
-        "service": "example_service"
-    },
-    "proxy_host": "http://example.com",
-    "timeout": 1.5
+    ]
 }
 ```
 
-#### Ответ:
+## Catching requests on `/<path>`
 
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": {},  // Записанные данные
-        "path": "test/endpoint",
-        "success": true
-    }
-    ```
+For any path that has a mock configured, the server processes the request in this order:
 
-- **Неуспешный ответ**:
-  - **Код ответа**: `400 BAD REQUEST`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "success": false,
-        "error": "Parameter 'path' is always required"
-    }
-    ```
+1. Records the request in traffic.
+2. Checks the method, otherwise `405 Method Not Allowed`.
+3. Returns a cached response when `cache_time` is set and there is a cache hit.
+4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
+5. Otherwise applies `timeout`, then `rules`, then the default `mock_data`.
 
-- **Примечание**: В случае ошибки, возвращается сообщение, описывающее проблему с запросом, например, отсутствие обязательного параметра `path`.
+If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `POST /traffic/settings`.
 
 ---
 
-### 3. `/configure_mock/binary` (POST)
+## 📄 License
 
-### Конфигурация мок-запроса с бинарным содержимым в прокси-моке
-
-Этот эндпоинт используется для настройки мок-запросов, когда данные передаются в виде бинарного содержимого. Внутри бинарного содержимого должен находиться словарь с конфигурацией мока.
-
-- **URL**: `/configure_mock/binary`
-- **Метод**: `POST`
-- **Тип контента**: `binary/app`
-
-#### Тело запроса:
-
-- **BYTES**:  
-  Бинарные данные должны содержать JSON-словарь с конфигурацией мока:
-
-  - **`path`** (обязательный) — `string`:  
-    Путь, по которому будет применен мок-запрос.
-
-  - **`mock_data`** — `dict`:  
-    Данные мок-ответа:
-    - **`body`** — `bytes`:  
-      Тело ответа, которое будет возвращено при совпадении пути.
-    - **`status_code`** — `integer`:  
-      Код состояния ответа.
-    - **`headers`** — `dict`:  
-      Заголовки ответа.
-
-  - **`extra_info`** — `dict` (опционально):  
-    Дополнительная информация о мок-запросе.
-
-  - **`proxy_host`** — `string` (опционально):  
-    URL проксирующего хоста, на который будет перенаправлен запрос.
-
-  - **`timeout`** — `float` (опционально):  
-    Время задержки перед отправкой ответа, в секундах.
-
-#### Пример бинарного запроса:
-Бинарные данные запроса должны содержать следующий словарь:
-
-```
-{
-    "path": "/test/endpoint",
-    "mock_data": {
-        "body": {
-            "message": "byte data"
-        },
-        "status_code": 200,
-        "headers": {
-            "Content-Type": "application/json"
-        }
-    },
-    "extra_info": {
-        "service": "example_service"
-    },
-    "proxy_host": "http://example.com",
-    "timeout": 1.5
-}
-```
-
-#### Ответ:
-
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": {},  // Записанные данные
-        "path": "/test/endpoint",
-        "success": true
-    }
-    ```
-
-- **Неуспешный ответ**:
-  - **Код ответа**: `400 BAD REQUEST`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "success": false,
-        "error": "Parameter 'path' is always required"
-    }
-    ```
-
-- **Примечание**: В случае ошибки, возвращается сообщение, описывающее проблему с запросом, например, отсутствие обязательного параметра `path`.
-
----
-
-### 4. `/traffic/clean` (POST)
-
-### Очистка хранилища параметров запросов
-
-Этот эндпоинт очищает хранилище параметров запросов. Можно указать параметр `service` для фильтрации очистки по конкретному сервису.
-
-- **URL**: `/traffic/clean`
-- **Метод**: `POST`
-
-#### Ответ:
-
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": [],
-        "success": true
-    }
-    ```
-
----
-
-### 5. `/storage/clean` (POST)
-
-### Очистка хранилища моков
-
-Этот эндпоинт очищает хранилище моков. Можно указать параметр `path` для фильтрации очистки по конкретному пути.
-
-- **URL**: `/storage/clean`
-- **Метод**: `POST`
-- **Query-параметры**:
-  - **`path`** (опциональный) — `str`:  
-    Если указан, будет очищено только хранилище моков для указанного пути.
-
-#### Ответ:
-
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": {},
-        "success": true
-    }
-    ```
-
-- **Примечание**: В случае ошибки (например, если указанный путь не найден), возвращается ошибка `"success": false`.
-
----
-
-### 6. `/storage` (GET)
-
-### Вывод хранилища моков
-
-Этот эндпоинт возвращает текущие сконфигурированные моки, хранящиеся в системе. Можно использовать параметр `path`, чтобы отфильтровать моки по определенному пути.
-
-- **URL**: `/storage`
-- **Метод**: `GET`
-- **Query-параметры**:
-  - **`path`** (опциональный) — `str`:  
-    Фильтрует результаты по указанному пути. Если параметр не указан, будут возвращены все моки.
-
-#### Ответ:
-
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": {},  // Объект с данными моков для указанного пути или всех моков
-        "success": true
-    }
-    ```
-
-- **Примечание**: В поле `data` будет представлен JSON-объект со всеми мока, соответствующими указанному пути или все моки, если путь не задан.
-
----
-
-### 7. `/traffic` (GET)
-
-### Вывод хранилища параметров запросов
-
-Этот эндпоинт возвращает информацию о всех запросах, поступивших в систему. Это может включать данные о запросах для анализа или отладки.
-
-- **URL**: `/traffic`
-- **Метод**: `GET`
-
-#### Ответ:
-
-- **Успешный ответ**:
-  - **Код ответа**: `200 OK`
-  - **Тип контента**: `application/json`
-  - **Тело ответа**:
-    ```json
-    {
-        "data": [],  // Массив объектов с данными о запросах
-        "success": true
-    }
-    ```
-
-- **Примечание**: В поле `data` будет представлен массив объектов, содержащих информацию о каждом запросе, который был перехвачен и сохранен системой.
-
----
-
-### 8. `/<path:path>` (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
-
-### Перехват всех входящих запросов
-
-Этот эндпоинт обрабатывает все запросы, поступающие на прокси-мок, вне зависимости от их пути. После перехвата запросов, сервер проверяет, существует ли заранее сконфигурированный ответ для данного пути.
-
-#### Поддерживаемые HTTP-методы:
-- **GET**
-- **POST**
-- **PUT**
-- **DELETE**
-- **PATCH**
-- **HEAD**
-- **OPTIONS**
-
-#### Логика обработки запроса:
-
-1. **Если заранее сконфигурированный ответ найден**:
-
-    - **Задержка ответа (таймаут)**:  
-      Если для данного запроса был настроен таймаут, сервер выполнит задержку перед отправкой ответа. Задержка будет соответствовать указанному времени ожидания (в секундах).
-
-    - **Заголовки ответа**:  
-      Если для данного запроса были заранее сохранены заголовки, они будут отправлены вместе с ответом.
-
-    - **Ответ без проксирования**:  
-      Если проксирующий хост не указан, сервер вернет заранее подготовленный ответ:
-      
-      - **Код ответа**: Заранее подготовленный код ответа (например, `200`).
-      - **Тело ответа**: Заранее подготовленные данные ответа, такие как JSON-объект или HTML-страница.
-
-    - **Ответ с проксированием на внешний хост**:  
-      Если для данного запроса указан проксирующий хост, запрос будет перенаправлен на внешний сервис. Клиент получит ответ от этого внешнего хоста:
-      
-      - **Код ответа**: Код состояния ответа от внешнего хоста (например, `200`, `404`, `500`).
-      - **Тело ответа**: Содержимое тела ответа, полученное от внешнего хоста.
-
-2. **Если заранее сконфигурированный ответ не найден**:
-
-    Если для запроса не был настроен мок-ответ, возвращается ошибка:
-
-    - **Код ответа**: `404 NOT FOUND`
-    - **Тип контента**: `application/json`
-    - **Тело ответа**:
-      ```json
-      {
-          "error": "Не найден мок /mock_path"
-      }
-      ```
-
----
+[MIT](LICENSE)

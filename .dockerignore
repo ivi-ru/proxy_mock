@@ -1,0 +1,37 @@
+# VCS
+.git
+.gitignore
+.hg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local tooling
+.pre-commit-config.yaml
+
+# OS files
+.DS_Store
+Thumbs.db

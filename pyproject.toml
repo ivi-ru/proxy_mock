@@ -1,33 +1,77 @@
-[tool.poetry]
+[project]
 name = "proxy_mock"
-version = "1.0.1"
-authors = []
-description = ""
+version = "2.10.1"
+description = "Tool for proxying and mocking HTTP traffic"
+authors = [
+    { name = "Andrey Ryabokon", email = "aryabokon@ivi.ru" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["mock", "proxy", "testing", "http", "fastapi", "autotests"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "requests>=2.31.0,<3.0.0",
+    "httpx2>=2.0.0,<3.0.0",
+    "yarl>=1.8.0,<2.0.0",
+    "pydantic>=2.6.0,<3.0.0",
+    "fastapi>=0.136.0",
+    "uvicorn>=0.27.0",
+    "msgpack>=1.0.4,<2.0.0",
+    "aiocache>=0.12.2,<0.13.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-flask = ">=2.3.0"
-requests = ">=2.28.0"
-gunicorn = ">=20.1.0"
-toml = ">=0.10.2"
-yarl = ">=1.9.4"
-pydantic = ">=2.8.2"
+[project.urls]
+Homepage = "https://github.com/ivi-ru/proxy_mock"
+Repository = "https://github.com/ivi-ru/proxy_mock"
+Changelog = "https://github.com/ivi-ru/proxy_mock/blob/main/CHANGELOG.md"
+Issues = "https://github.com/ivi-ru/proxy_mock/issues"
 
-[tool.poetry.group.dev.dependencies]
-flake8 = "7.0.0"
-flake8-print = "5.0.0"
-flake8-debugger = "4.1.2"
-flake8-eradicate = "1.5.0"
-flake8-todo = "0.7"
-flake8-absolute-import = "1.0.0.2"
-flake8-builtins = "2.2.0"
-isort = "5.13.2"
-yapf = "0.40.2"
-
-[tool.poetry.group.test.dependencies]
-pytest = ">=7.2.0"
-pytest-cov = ">=2.10.1"
+[dependency-groups]
+dev = [
+    "ruff>=0.13.2,<0.14.0",
+    "pre-commit>=4.3.0,<5.0.0",
+    "pytest>=8.4.2,<9.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
+    "coverage>=7.10.7,<8.0.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["proxy_mock"]
+
+[tool.hatch.build.targets.sdist]
+include = ["proxy_mock", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+exclude = [
+    ".git",
+    ".hg",
+    ".venv",
+    "docker/*",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E402"]

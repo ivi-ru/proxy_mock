@@ -1,36 +1,37 @@
-# Образ с системными зависимостями
-FROM python:3.12-slim AS base-image
+ARG PYTHON_VERSION=3.14-slim
+FROM python:${PYTHON_VERSION} AS base
 
-RUN mkdir /opt/proxy_mock
-WORKDIR /opt/proxy_mock
+# --- Dependency build stage (compilers live only here) ---
+FROM base AS builder
 
-RUN apt-get update && apt-get install -y git gcc gpp build-essential \
-    && rm -rf /var/lib/apt/lists/*
-RUN python -m ensurepip --upgrade
-RUN python -m pip install --upgrade pip setuptools wheel
+RUN apt-get update \
+&& apt-get install -y --no-install-recommends build-essential gcc git \
+&& rm -rf /var/lib/apt/lists/* \
+&& python -m pip install --upgrade pip setuptools wheel \
+&& pip install uv==0.11.26
 
-# Ставим python-зависимости
-FROM base-image AS build-image
+# copy: otherwise uv complains about hardlinks across layers; never: use the base image interpreter.
+ENV UV_LINK_MODE=copy
+ENV UV_PYTHON_DOWNLOADS=never
 
-RUN pip install poetry==1.8.3
+WORKDIR /build
+COPY pyproject.toml uv.lock ./
 
-RUN mkdir -p /www/proxy_mock/
-WORKDIR /www/proxy_mock/
-COPY pyproject.toml poetry.lock ./
+# IMPORTANT: a venv cannot be moved to a different path, because console scripts hardcode the
+# absolute interpreter path in their shebang. So the final stage copies the venv to the SAME path.
+RUN UV_PROJECT_ENVIRONMENT=/opt/venv-main uv sync --locked --no-install-project --no-dev
 
-RUN python -m venv /opt/venv && \
-    . /opt/venv/bin/activate && \
-    poetry install --no-root
+# --- Final slim server image ---
+FROM base AS runtime
 
-# Используем python из venv по умолчанию
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /opt/venv-main /opt/venv-main
+ENV PATH="/opt/venv-main/bin:$PATH"
 ENV PYTHONPATH=/var/www/proxy_mock
 
-# Образ с приложением
-FROM build-image
-
 WORKDIR /var/www/proxy_mock
-COPY . .
+# pyproject.toml is read at runtime to determine the service version
+COPY pyproject.toml ./
+COPY proxy_mock ./proxy_mock
 
 ARG CMD_ARG=""
 ENV CMD_ARG=${CMD_ARG}
