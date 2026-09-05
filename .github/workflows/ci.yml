@@ -68,7 +68,7 @@ jobs:
         run: |
           uv venv --python 3.11 .venv-lowest
           uv pip install --python .venv-lowest --resolution lowest-direct \
-            . "pytest>=8.4.2,<9" "pytest-cov>=7.0.0,<8"
+            . "pytest>=9.0.3,<10" "pytest-cov>=7.0.0,<8"
 
       - name: Report what was resolved
         run: uv pip list --python .venv-lowest
