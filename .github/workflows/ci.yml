@@ -13,10 +13,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
           enable-cache: true
 
@@ -29,6 +29,9 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check .
 
+      - name: AGENTS.md refers to real make targets
+        run: .github/scripts/check_agents_targets.sh
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -36,10 +39,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
           enable-cache: true
 
@@ -49,10 +52,74 @@ jobs:
       - name: pytest
         run: uv run --python ${{ matrix.python-version }} pytest --cov -v
 
+  lowest-bounds:
+    # The declared lower bounds are a promise to anyone installing proxy-mock into an existing
+    # project. The locked versions never exercise them, so they are resolved and tested here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+
+      - name: Install the lowest declared versions of the direct dependencies
+        run: |
+          uv venv --python 3.11 .venv-lowest
+          uv pip install --python .venv-lowest --resolution lowest-direct \
+            . "pytest>=8.4.2,<9" "pytest-cov>=7.0.0,<8"
+
+      - name: Report what was resolved
+        run: uv pip list --python .venv-lowest
+
+      - name: pytest
+        run: .venv-lowest/bin/python -m pytest -q
+
+  wheel:
+    # Unit tests import the package from the working tree and would not notice a packaging
+    # mistake: a missing module, an unregistered entry point, a console script that does not run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+
+      - name: Build the distributions
+        run: uv build
+
+      - name: Install the wheel into a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet dist/*.whl pytest requests
+
+      - name: Run the smoke test outside the repository
+        run: |
+          cp .github/smoke/test_installed_package.py "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          ./venv/bin/pytest -q test_installed_package.py
+
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       - name: Build image
         run: docker build --build-arg PYTHON_VERSION=3.14-slim -t proxy_mock .
+
+      - name: The image starts and serves
+        run: |
+          docker run -d --rm --name proxy_mock -p 5000:5000 proxy_mock
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5000/proxy_mock > /dev/null; then
+              docker stop proxy_mock
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs proxy_mock
+          docker stop proxy_mock
+          exit 1

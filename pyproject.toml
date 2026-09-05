@@ -1,6 +1,6 @@
 [project]
 name = "proxy_mock"
-version = "2.10.1"
+version = "2.11.0"
 description = "Tool for proxying and mocking HTTP traffic"
 authors = [
     { name = "Andrey Ryabokon", email = "aryabokon@ivi.ru" }
@@ -26,13 +26,19 @@ classifiers = [
 dependencies = [
     "requests>=2.31.0,<3.0.0",
     "httpx2>=2.0.0,<3.0.0",
-    "yarl>=1.8.0,<2.0.0",
+    "yarl>=1.9.4,<2.0.0",
     "pydantic>=2.6.0,<3.0.0",
-    "fastapi>=0.136.0",
+    "fastapi>=0.137.0",
     "uvicorn>=0.27.0",
     "msgpack>=1.0.4,<2.0.0",
     "aiocache>=0.12.2,<0.13.0",
 ]
+
+[project.scripts]
+proxy-mock = "proxy_mock.cli:main"
+
+[project.entry-points.pytest11]
+proxy_mock = "proxy_mock.pytest_plugin"
 
 [project.urls]
 Homepage = "https://github.com/ivi-ru/proxy_mock"

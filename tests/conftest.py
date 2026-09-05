@@ -9,6 +9,9 @@ from proxy_mock.client import ProxyMock
 from tests import HOST
 from tests.constants import BYTE_RESPONSE, TEST_CONFIGURE_DATA
 
+# tests/test_pytest_plugin.py runs pytest inside pytest to check the shipped fixtures.
+pytest_plugins = ["pytester"]
+
 
 @pytest.fixture(scope="session")
 def client():

@@ -1,3 +1,4 @@
+import warnings
 from http import HTTPMethod
 from typing import Any
 
@@ -149,26 +150,53 @@ class ProxyMock(Route):
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def clean_storage(self, path: str | None = None):
-        query_params = {**({"path": path} if path else {})}
-        full_path = URL().with_path(Endpoints.STORAGE_CLEAN).with_query(query_params).human_repr()
-        return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
+        """Delete mocks: all of them, or the one at `path`.
+
+        Passing a path is deprecated — use `delete_mock()`, which reports a missing mock with a
+        `404` instead of `success: false`.
+        """
+        if path:
+            warnings.warn(
+                "clean_storage(path=...) is deprecated and will be removed in 3.0; use delete_mock(path)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            full_path = URL().with_path(Endpoints.STORAGE_CLEAN).with_query({"path": path}).human_repr()
+            return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
+
+        return super().execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.STORAGE)
+
+    def export_mocks(self):
+        """Export every configured mock as a snapshot document."""
+        return super().execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.STORAGE_SNAPSHOT)
+
+    def import_mocks(self, snapshot: dict, mode: str = "merge"):
+        """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
+        full_path = URL().with_path(Endpoints.STORAGE_SNAPSHOT).with_query({"mode": mode}).human_repr()
+        return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
 
     def delete_mock(self, path: str):
         full_path = URL().with_path(Endpoints.STORAGE).with_query({"path": path}).human_repr()
         return super().execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
 
     def clean_traffic(self):
-        return super().execute_request_and_get_response_body(HTTPMethod.POST, Endpoints.TRAFFIC_CLEAN)
+        return super().execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.TRAFFIC)
 
     def get_traffic_settings(self):
         return super().execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.TRAFFIC_SETTINGS)
 
     def set_traffic_settings(self, record_unknown_traffic: bool | None = None, max_items: int | None = None):
         return super().execute_request_and_get_response_body(
-            HTTPMethod.POST,
+            HTTPMethod.PATCH,
             Endpoints.TRAFFIC_SETTINGS,
             json=_build_traffic_settings_payload(record_unknown_traffic, max_items),
         )
 
     def clean_cache(self):
+        """Deprecated: response caching and this endpoint are removed in 3.0."""
+        warnings.warn(
+            "clean_cache() is deprecated and will be removed in 3.0 together with response caching",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return super().execute_request_and_get_response_body(HTTPMethod.POST, Endpoints.CACHE_CLEAN)

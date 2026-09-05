@@ -3,6 +3,8 @@ from proxy_mock.app import create_app
 app = create_app()
 
 if __name__ == "__main__":
-    import uvicorn
+    import sys
 
-    uvicorn.run("any_catcher:app", port=5000, log_level="info", reload=True)
+    from proxy_mock.cli import main
+
+    sys.exit(main())

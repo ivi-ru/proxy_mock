@@ -33,7 +33,11 @@ WORKDIR /var/www/proxy_mock
 COPY pyproject.toml ./
 COPY proxy_mock ./proxy_mock
 
-ARG CMD_ARG=""
+EXPOSE 5000
+
+# The project itself is not installed into the venv (only its dependencies are), so the module
+# entry point is used rather than the console script. Override by passing a command to docker run.
+ARG CMD_ARG="python -m proxy_mock --host=0.0.0.0 --port=5000 --log-level=info"
 ENV CMD_ARG=${CMD_ARG}
 
 CMD ${CMD_ARG}

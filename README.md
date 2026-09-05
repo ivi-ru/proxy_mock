@@ -8,6 +8,13 @@
 **Proxy Mock** is a tool that combines a proxy server and a mock server.
 It suits automated tests, integration scenarios and local debugging of service-to-service calls.
 
+[Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
+
+```bash
+pip install proxy_mock
+proxy-mock --port 5000
+```
+
 ---
 
 ## 📋 Features
@@ -15,9 +22,12 @@ It suits automated tests, integration scenarios and local debugging of service-t
 - **Request proxying** to an upstream host (`proxy_host`)
 - **Endpoint mocking** with flexible response configuration
 - **Rules** for returning different responses on the same path
-- **Response delay** (`timeout`) and **caching** (`cache_time`)
+- **Response delay** (`timeout`)
 - **Traffic capture** of incoming requests for later inspection
 - **Bounded in-memory traffic storage** (the last 1000 records by default)
+- **JSON snapshots** of the whole storage: export, load back, or preload at startup
+- **One command to start** (`proxy-mock`) and **pytest fixtures** that ship with the package
+- **Response caching** (`cache_time`) — deprecated, removed in 3.0
 
 ---
 
@@ -36,10 +46,10 @@ The tool is meant for a **trusted, isolated test environment** and is not design
 
 ## ⬆️ Migrating from 1.0.1
 
-The previously published 1.0.1 ran on Flask. The current 2.10.1 runs on FastAPI, and four
+The previously published 1.0.1 ran on Flask. The current 2.x line runs on FastAPI, and four
 changes break compatibility. What to fix in a project upgrading from 1.0.1:
 
-| In 1.0.1 | In 2.10.1 |
+| In 1.0.1 | In 2.x |
 |---|---|
 | `GET /status` | `GET /proxy_mock` — no alias, the old path returns `404` |
 | `get_status()` | `get_proxy_mock()` — no alias |
@@ -60,6 +70,13 @@ gunicorn. The full history is in [CHANGELOG.md](CHANGELOG.md).
 ---
 
 ## 🚀 Getting started
+
+The shortest path is one command, with nothing installed permanently:
+
+```bash
+uvx proxy-mock --port 5000          # with uv
+pipx run proxy-mock --port 5000     # with pipx
+```
 
 There are three ways to run proxy-mock:
 
@@ -99,116 +116,121 @@ Make sure the following are installed:
 
 ### 🐳 Running in Docker
 
-1. **Build the image and start the service**
+Every release is published to GHCR, so nothing has to be built:
 
-    ```bash
-    make docker_run
-    ```
+```bash
+docker run --rm -p 5000:5000 ghcr.io/ivi-ru/proxy_mock:latest
+```
 
-2. **Reach the service**
+To start from a prepared snapshot, mount it and pass `--mocks`:
 
-    Once it is up, the service listens on:
-    ```
-    http://localhost:5000
-    ```
+```bash
+docker run --rm -p 5000:5000 -v "$PWD/mocks.json:/mocks.json" \
+    ghcr.io/ivi-ru/proxy_mock:latest \
+    python -m proxy_mock --host=0.0.0.0 --port=5000 --mocks /mocks.json
+```
+
+To build the image from the working tree instead:
+
+```bash
+make docker_run
+```
+
+Once it is up, the service listens on `http://localhost:5000`.
 
 ### 🐍 Running without Docker (as a pip package)
 
-Docker is not required for automated tests: proxy-mock is published as an ordinary Python package containing both the server and the clients.
+Docker is not required for automated tests: proxy-mock is published as an ordinary Python package containing the server, both clients and a pytest plugin.
 
 ```bash
 pip install proxy_mock
-uvicorn proxy_mock.any_catcher:app --host 0.0.0.0 --port 5000 --workers 1
+proxy-mock --port 5000
 ```
 
-You can also start it straight from your tests with a session-scoped pytest fixture (free port, automatic shutdown):
+`proxy-mock --help` lists the options; the ones that matter are `--host`, `--port`, `--log-level`
+and `--mocks`. The same entry point is available as `python -m proxy_mock`.
+
+Only a single worker is supported — mocks and captured traffic live in the memory of one
+process, so a second worker would answer from an empty storage. `--workers 2` is refused with
+that explanation rather than starting a service that lies every other call.
+
+#### Fixtures for pytest
+
+The package registers a pytest plugin, so the fixtures are available as soon as it is installed
+— no `conftest.py` boilerplate:
 
 ```python
-import socket
-import threading
-import time
-
-import pytest
-import uvicorn
-
-from proxy_mock.app import create_app
-from proxy_mock.client import ProxyMock
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-@pytest.fixture(scope="session")
-def proxy_mock_url():
-    port = _free_port()
-    config = uvicorn.Config(create_app(), host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-
-    deadline = time.time() + 10
-    while not server.started:
-        if time.time() > deadline:
-            raise RuntimeError("proxy-mock failed to start in time")
-        time.sleep(0.05)
-
-    yield f"http://127.0.0.1:{port}"
-
-    server.should_exit = True
-    thread.join(timeout=5)
-
-
-@pytest.fixture(scope="session")
-def proxy_mock(proxy_mock_url):
-    return ProxyMock(proxy_mock_url)
-```
-
-Using it in a test:
-
-```python
-def test_external_service(proxy_mock):
+def test_external_service(proxy_mock, proxy_mock_url):
     proxy_mock.configure_mock(path="/external/api", body={"answer": 42})
+
     # ... point the application under test at proxy_mock_url and assert on its behaviour
+
     traffic = proxy_mock.get_traffic(path="/external/api")
     assert traffic["count"] == 1
 ```
 
+| Fixture | Scope | What it gives |
+|---------|-------|---------------|
+| `proxy_mock_url` | session | Base URL of a running instance. Starts a server on a free port and shuts it down at the end of the session |
+| `proxy_mock` | function | A `ProxyMock` client bound to that URL. Mocks and traffic are reset after every test |
+
+To run the tests against an instance that is already up (in docker compose, for example), set
+`PROXY_MOCK_URL` — the fixture then uses it and starts nothing:
+
+```bash
+PROXY_MOCK_URL=http://localhost:5000 pytest
+```
+
+To keep mocks across several tests, build a client of your own from `proxy_mock_url` instead of
+using the `proxy_mock` fixture, which resets state between tests.
+
+#### Snapshots of the storage
+
+The whole storage can be exported as one JSON document, kept next to the tests, and loaded back:
+
+```bash
+curl http://localhost:5000/storage/snapshot > mocks.json   # export
+proxy-mock --port 5000 --mocks mocks.json                  # start with them preloaded
+```
+
+The same from Python:
+
+```python
+snapshot = proxy_mock.export_mocks()
+proxy_mock.import_mocks(snapshot)                # merge into what is already configured
+proxy_mock.import_mocks(snapshot, mode="replace")  # or replace the storage
+```
+
+The document carries its own format version, so snapshots stay readable across releases:
+
+```json
+{
+  "format": 1,
+  "protocol": "http",
+  "generated_by": "proxy_mock 2.11.0",
+  "mocks": [{"path": "/external/api", "mock_data": {"body": {"answer": 42}, "status_code": 200}}]
+}
+```
+
+Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_b64` instead of
+`body`, and are restored as bytes on import.
+
 **Requirements and limitations:**
 
 - Python **>= 3.11** in the test environment; on older interpreters pip will not find an installable version.
-- The package pulls server dependencies (`fastapi>=0.136`, `pydantic>=2.6`, `uvicorn`, `httpx2`). If your test project pins older versions, the resolver may conflict. In that case install proxy-mock into a separate environment (`uv tool install` / `pipx`) and run it as a subprocess.
-- Under parallel runs (pytest-xdist) start one instance per worker: the mock and traffic stores are global to an instance.
-
-### Free-threaded Python (optional)
-
-The service also runs on a free-threaded build of the interpreter (3.14t). The official
-`python` images on Docker Hub do not publish free-threaded variants, so the interpreter has to
-be installed separately, for example with uv:
-
-```bash
-uv python install 3.14t
-uv sync --python 3.14t
-```
-
-Uvicorn should be started with a single worker (`--workers 1`). To confirm the GIL is really
-disabled:
-
-```bash
-python scripts/check_gil.py
-```
+- The package pulls server dependencies (`fastapi>=0.137`, `pydantic>=2.6`, `uvicorn`, `httpx2`). If your test project pins older versions, the resolver may conflict. In that case install proxy-mock into a separate environment (`uv tool install` / `pipx`) and run it as a subprocess.
+- Under parallel runs (pytest-xdist) every worker starts its own instance: the mock and traffic stores belong to a process.
 
 ### Environment variables
 
 | Variable | Values | Description |
 |----------|--------|-------------|
 | `PROXY_MOCK_LOG_REQUESTS` | `full` (default), `minimal`, `off` | Logging level for incoming requests |
-| `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `POST /traffic/settings` |
+| `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `PATCH /traffic/settings` |
 | `PROXY_MOCK_PROXY_TIMEOUT` | float, seconds (default `30`) | Timeout for outgoing proxied requests |
 | `PROXY_MOCK_ALLOWED_PROXY_HOSTS` | comma-separated host list (default: empty) | Allowlist of proxy targets. Empty means any host is allowed |
-| `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC` | `true` (default), `false` (`1/0`, `yes/no`, `on/off`) | Whether to record requests that matched no mock (the `404` response). Toggleable at runtime via `POST /traffic/settings` |
+| `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC` | `true` (default), `false` (`1/0`, `yes/no`, `on/off`) | Whether to record requests that matched no mock (the `404` response). Toggleable at runtime via `PATCH /traffic/settings` |
+| `PROXY_MOCK_URL` | URL (default: empty) | Read by the pytest fixtures: when set, they use that instance instead of starting one |
 
 ---
 
@@ -231,12 +253,22 @@ A short reference and the key examples follow.
 | `PATCH` | `/configure_mock` | Amend an existing mock (it must already exist) | `200` — same shape as POST |
 | `GET` | `/storage` | List mocks. Query: `path` filters by path | `200` — `{"success": true, "data": {...}}` |
 | `DELETE` | `/storage` | Delete mocks. Query: `path` for one mock; without `path` all of them | `200` — `{"success": true, "data": {...}}`; `404` if the given mock does not exist |
-| `POST` | `/storage/clean` | Deprecated alias of `DELETE /storage` (same effect) | `200` — `{"success": true, "data": {...}}` |
+| `GET` | `/storage/snapshot` | Export every mock as a snapshot document | `200` — the snapshot itself (see "Snapshots of the storage") |
+| `POST` | `/storage/snapshot` | Load a snapshot. Query: `mode=merge` (default) or `mode=replace` | `200` — `{"success": true, "data": {"imported": N, "mode": "...", "paths": [...]}}`; `400` on malformed JSON or an unknown mode, `422` on an invalid snapshot |
 | `GET` | `/traffic` | Show captured traffic. Query: `path`, `method`, `limit` | `200` — `{"success": true, "count": N, "data": [...]}` |
-| `POST` | `/traffic/clean` | Clear the traffic store | `200` — `{"success": true, "data": []}` |
+| `DELETE` | `/traffic` | Clear the traffic store | `200` — `{"success": true, "data": []}` |
 | `GET` | `/traffic/settings` | Current traffic recording settings | `200` — `{"success": true, "data": {"record_unknown_traffic": true, "max_items": 1000}}` |
-| `POST` | `/traffic/settings` | Change traffic settings. Body: `{"record_unknown_traffic": bool}` and/or `{"max_items": int > 0}`; the update is partial | `200` — same shape as GET; `400` on malformed JSON, `422` on an invalid or empty body |
-| `POST` | `/cache/clean` | Invalidate the entire cache | `200` — `{"success": true}` |
+| `PATCH` | `/traffic/settings` | Change traffic settings. Body: `{"record_unknown_traffic": bool}` and/or `{"max_items": int > 0}`; the update is partial | `200` — same shape as GET; `400` on malformed JSON, `422` on an invalid or empty body |
+
+**Deprecated, removed in 3.0.** They still work and answer exactly as before, but send a
+`Deprecation: true` response header and a `Link` to the replacement:
+
+| Method | URL | Replacement |
+|--------|-----|-------------|
+| `POST` | `/storage/clean` | `DELETE /storage` |
+| `POST` | `/traffic/clean` | `DELETE /traffic` |
+| `POST` | `/traffic/settings` | `PATCH /traffic/settings` |
+| `POST` | `/cache/clean` | none — response caching goes away with it |
 | `*` | `/<any path>` | Catch-all: returns a mock, proxies, or `404` | depends on the configuration (see below) |
 
 **`/configure_mock` errors:**
@@ -259,7 +291,7 @@ Content type: `application/json` or `application/octet-stream` (msgpack). The PA
 | `extra_info` | `dict` | Arbitrary metadata (ends up in traffic) |
 | `proxy_host` | `string` (**absolute URL**) | Proxy the request to this host |
 | `timeout` | `float` | Delay before responding, seconds |
-| `cache_time` | `int` | Response cache lifetime, seconds |
+| `cache_time` | `int` | Response cache lifetime, seconds. **Deprecated**, removed in 3.0 |
 | `rules` | `list[dict]` | Rules producing different responses on one path |
 
 Each entry in `rules`:
@@ -314,7 +346,7 @@ For any path that has a mock configured, the server processes the request in thi
 4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
 5. Otherwise applies `timeout`, then `rules`, then the default `mock_data`.
 
-If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `POST /traffic/settings`.
+If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /traffic/settings`.
 
 ---
 

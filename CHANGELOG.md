@@ -1,7 +1,7 @@
 Migrating from 1.0.1
 ====================
 
-The previously published 1.0.1 (Flask) and the current 2.10.1 (FastAPI) are not compatible.
+The previously published 1.0.1 (Flask) and the current 2.x line (FastAPI) are not compatible.
 Five changes require edits in projects upgrading from 1.0.1:
 
 * **`GET /status` was renamed to `GET /proxy_mock`.** There is no alias: `/status` is now
@@ -21,7 +21,27 @@ Still compatible: `POST /configure_mock`, `GET /storage`, `POST /storage/clean`,
 optional filters (`path`, `method`, `limit`); calling it without arguments is unchanged.
 
 Environment requirements changed as well: Python >= 3.11 instead of 3.9, and uvicorn instead
-of gunicorn.
+of gunicorn. From 2.11.0 the service is started with the `proxy-mock` command.
+
+Version 2.11.0
+==============
+
+* **Console entry point.** `proxy-mock --host … --port … --mocks …` starts the service without Docker and without a uvicorn command line; the same entry point works as `python -m proxy_mock`, and `uvx proxy-mock` runs it without installing anything. `--workers` greater than 1 is refused with an explanation: mocks and traffic live in the memory of a single process, so a second worker would answer from an empty storage
+* **pytest fixtures ship with the package.** The `pytest11` entry point registers `proxy_mock` (a client, with mocks and traffic reset after every test) and `proxy_mock_url` (a session-scoped instance on a free port). `PROXY_MOCK_URL` points them at an instance that is already running instead of starting one. The fixture boilerplate previously copied out of the README is no longer needed
+* **JSON snapshots of the storage.** `GET /storage/snapshot` exports every mock as one document, `POST /storage/snapshot?mode=merge|replace` loads it back, and `proxy-mock --mocks file.json` preloads it at startup. The clients gained `export_mocks()` and `import_mocks()`. The document carries `"format": 1` and a `protocol` field so that later versions stay readable; binary bodies travel base64-encoded in `body_b64`. An invalid snapshot is rejected before anything is written, so the storage is never left half-loaded
+* Importing `proxy_mock.client` no longer pulls in FastAPI and uvicorn: `create_app` is resolved lazily (PEP 562). A project that only talks to a running instance stops paying the import cost of the server
+
+* **Fixed:** the declared lower bound `fastapi>=0.136` was not safe. On 0.136.x a user mock shadows the service endpoints — configuring a mock for `/proxy_mock` made the service endpoint return the mock — because the routing behaviour the isolation relies on arrived in 0.137.0. The bound is now `fastapi>=0.137.0`
+* **Fixed:** the declared lower bound `yarl>=1.8.0` was not installable on any supported Python: 1.8.0 has no wheels for 3.11+ and its generated C sources no longer compile. The bound is now `yarl>=1.9.4`
+
+* `DELETE /traffic` and `PATCH /traffic/settings` were added as the RESTful forms of clearing traffic and updating settings, so that the endpoints deprecated here have a replacement to move to today
+* **Deprecated, removed in 3.0:** `POST /storage/clean`, `POST /traffic/clean`, `POST /traffic/settings`, `POST /cache/clean` and the `cache_time` field. They keep working unchanged, but send a `Deprecation: true` header with a `Link` to the replacement and log a warning once per process
+* The clients now call the RESTful endpoints (`clean_storage()`, `clean_traffic()`, `set_traffic_settings()`); the responses are unchanged. `clean_storage(path=…)` and `clean_cache()` emit a `DeprecationWarning` — use `delete_mock(path)` instead of the former
+
+* A container image is published to GHCR on every release: `docker run --rm -p 5000:5000 ghcr.io/ivi-ru/proxy_mock:latest`. The image now carries a default command, so it starts without build arguments
+* CI additions: a job that resolves and tests the declared *lowest* dependency versions, and a smoke test that installs the built wheel into a clean environment and runs the shipped fixtures and console script against it. GitHub Actions are pinned by commit SHA and the Dependabot configuration lives in the repository
+* **Free-threaded interpreters are no longer supported.** Running on a free-threaded build (3.14t) measured slower than on the regular one, because the service's work is CPU-bound. The documentation section, the `scripts/check_gil.py` helper and the intent to test that build have been dropped; the regular 3.11-3.14 builds are unaffected
+* Project documentation: `ROADMAP.md` (scope, non-goals, the dependency budget and what 2.12 and 3.0 change), `CONTRIBUTING.md`, `SECURITY.md` and `AGENTS.md`
 
 Version 2.10.1
 ==============

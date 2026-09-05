@@ -2,6 +2,7 @@ import copy
 
 from fastapi import FastAPI
 
+from proxy_mock.core.deprecation import warn_deprecated_field
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.repositories.mock_storage import mock_storage
 from proxy_mock.utils import apply_mocks_factory
@@ -84,6 +85,9 @@ async def return_storage() -> dict:
 
 
 async def mock_initialization(app: FastAPI, mock_data: dict):
+    if mock_data.get("cache_time"):
+        warn_deprecated_field("cache_time", "response caching is removed in 3.0")
+
     await create_mock_data(**mock_data)
 
     normalized_path = normalize_path(mock_data["path"])
