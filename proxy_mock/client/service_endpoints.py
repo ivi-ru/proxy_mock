@@ -12,3 +12,4 @@ class Endpoints(StrEnum):
     TRAFFIC = "/traffic"
     TRAFFIC_SETTINGS = "/traffic/settings"
     STORAGE = "/storage"
+    STORAGE_SNAPSHOT = "/storage/snapshot"

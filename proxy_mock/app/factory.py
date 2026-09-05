@@ -13,6 +13,7 @@ from proxy_mock.api.routes.traffic import router as traffic_router
 from proxy_mock.core.logging import app_logger
 from proxy_mock.core.settings import get_version_from_pyproject, record_unknown_traffic_default
 from proxy_mock.repositories.traffic_store import TrafficStore
+from proxy_mock.services.snapshot import import_snapshot
 from proxy_mock.services.traffic_service import new_traffic_data
 from proxy_mock.utils import log_request
 
@@ -26,10 +27,25 @@ def _proxy_timeout() -> float:
         return 30.0
 
 
+async def _preload_snapshot(app: FastAPI) -> None:
+    """Load the snapshot passed to the CLI.
+
+    It runs here rather than before uvicorn starts, because the storage lock belongs to the
+    loop that first uses it — the serving loop.
+    """
+    snapshot = getattr(app.state, "preload_snapshot", None)
+    if not snapshot:
+        return
+
+    result = await import_snapshot(app, snapshot, mode="replace")
+    app.logger.info(f"Preloaded {result['imported']} mocks from a snapshot")
+
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     app.state.http_client = httpx2.AsyncClient(timeout=httpx2.Timeout(_proxy_timeout()))
     try:
+        await _preload_snapshot(app)
         yield
     finally:
         await app.state.http_client.aclose()
@@ -44,6 +60,8 @@ class ProxyMockApp(FastAPI):
         self.state.traffic_store = TrafficStore()
         # Toggled at runtime via POST /traffic/settings, so it lives in state rather than in a module constant.
         self.state.record_unknown_traffic = record_unknown_traffic_default()
+        # Filled in by the CLI when it is given --mocks; applied during startup.
+        self.state.preload_snapshot = None
         self.logger = app_logger
 
 

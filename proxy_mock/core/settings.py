@@ -24,7 +24,7 @@ def record_unknown_traffic_default() -> bool:
     return DEFAULT_RECORD_UNKNOWN_TRAFFIC
 
 
-def get_version_from_pyproject(logger) -> str:
+def get_version_from_pyproject(logger=None) -> str:
     # Dev checkout or Docker image: the working directory holds proxy_mock's own pyproject.toml.
     # We check the project name so that another project's pyproject.toml is not picked up
     # when proxy_mock is installed as a library.
@@ -34,7 +34,8 @@ def get_version_from_pyproject(logger) -> str:
         project = pyproject_data.get("project") or {}
         if project.get("name") == PACKAGE_NAME:
             version = project["version"]
-            logger.info(f"Proxy-Mock version is {version}")
+            if logger:
+                logger.info(f"Proxy-Mock version is {version}")
             return version
     except (OSError, tomllib.TOMLDecodeError, KeyError):
         pass
@@ -43,8 +44,10 @@ def get_version_from_pyproject(logger) -> str:
     try:
         version = metadata.version(PACKAGE_NAME)
     except metadata.PackageNotFoundError:
-        logger.warning("Could not determine the proxy_mock version")
+        if logger:
+            logger.warning("Could not determine the proxy_mock version")
         return "unknown"
 
-    logger.info(f"Proxy-Mock version is {version}")
+    if logger:
+        logger.info(f"Proxy-Mock version is {version}")
     return version

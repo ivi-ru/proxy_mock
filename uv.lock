@@ -396,8 +396,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version < '3.12' or sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "python_full_version < '3.12' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
@@ -824,7 +824,7 @@ wheels = [
 
 [[package]]
 name = "proxy-mock"
-version = "2.10.1"
+version = "2.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiocache" },
@@ -849,13 +849,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiocache", specifier = ">=0.12.2,<0.13.0" },
-    { name = "fastapi", specifier = ">=0.136.0" },
+    { name = "fastapi", specifier = ">=0.137.0" },
     { name = "httpx2", specifier = ">=2.0.0,<3.0.0" },
     { name = "msgpack", specifier = ">=1.0.4,<2.0.0" },
     { name = "pydantic", specifier = ">=2.6.0,<3.0.0" },
     { name = "requests", specifier = ">=2.31.0,<3.0.0" },
     { name = "uvicorn", specifier = ">=0.27.0" },
-    { name = "yarl", specifier = ">=1.8.0,<2.0.0" },
+    { name = "yarl", specifier = ">=1.9.4,<2.0.0" },
 ]
 
 [package.metadata.requires-dev]
