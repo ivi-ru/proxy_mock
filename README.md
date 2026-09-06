@@ -10,10 +10,43 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
+## Quick start
+
+With Python 3.11 or newer, install the package and test dependencies in a virtual environment:
+
 ```bash
-pip install proxy_mock
-proxy-mock --port 5000
+python -m pip install 'proxy_mock>=2.11,<3' pytest requests
 ```
+
+Save this complete test as `test_http_dependency.py`:
+
+```python
+import requests
+
+
+def test_http_dependency(proxy_mock, proxy_mock_url):
+    proxy_mock.configure_mock(path="/inventory/sku-42", methods=["GET"], body={"available": 3})
+
+    response = requests.get(f"{proxy_mock_url}/inventory/sku-42", timeout=5)
+
+    assert response.status_code == 200
+    assert response.json() == {"available": 3}
+    traffic = proxy_mock.get_traffic(path="/inventory/sku-42", method="GET")
+    assert traffic["count"] == 1
+    assert traffic["data"][0]["request_path"] == "/inventory/sku-42"
+```
+
+Run it:
+
+```bash
+python -m pytest -q test_http_dependency.py
+```
+
+Expected result: **1 passed**. The fixtures start a server on a free loopback port, reset its
+state after the test, and shut it down at the end of the session. No separate server is needed.
+
+The [runnable examples](examples/README.md) include this test and a JSON snapshot round trip.
+To use the tool outside pytest, start the standalone server with `proxy-mock --port 5000`.
 
 ---
 
@@ -157,17 +190,8 @@ that explanation rather than starting a service that lies every other call.
 #### Fixtures for pytest
 
 The package registers a pytest plugin, so the fixtures are available as soon as it is installed
-— no `conftest.py` boilerplate:
-
-```python
-def test_external_service(proxy_mock, proxy_mock_url):
-    proxy_mock.configure_mock(path="/external/api", body={"answer": 42})
-
-    # ... point the application under test at proxy_mock_url and assert on its behaviour
-
-    traffic = proxy_mock.get_traffic(path="/external/api")
-    assert traffic["count"] == 1
-```
+— no `conftest.py` boilerplate. The [quick start](#quick-start) is a complete test that configures
+a response, makes an HTTP request, and verifies the captured traffic.
 
 | Fixture | Scope | What it gives |
 |---------|-------|---------------|

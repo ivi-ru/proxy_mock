@@ -99,8 +99,9 @@ jobs:
       - name: Run the smoke test outside the repository
         run: |
           cp .github/smoke/test_installed_package.py "$RUNNER_TEMP/"
+          cp -R examples "$RUNNER_TEMP/examples"
           cd "$RUNNER_TEMP"
-          ./venv/bin/pytest -q test_installed_package.py
+          ./venv/bin/pytest -q test_installed_package.py examples
 
   docker:
     runs-on: ubuntu-latest

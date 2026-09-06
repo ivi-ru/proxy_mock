@@ -1,3 +1,10 @@
+Unreleased
+==========
+
+* Added complete pytest examples for configuring an HTTP dependency, inspecting traffic, and
+  restoring a JSON mock snapshot. The README quick start runs without an external service, and
+  CI checks the examples against the built wheel outside the source tree.
+
 Migrating from 1.0.1
 ====================
 
