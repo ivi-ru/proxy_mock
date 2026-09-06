@@ -197,7 +197,7 @@ The same from Python:
 
 ```python
 snapshot = proxy_mock.export_mocks()
-proxy_mock.import_mocks(snapshot)                # merge into what is already configured
+proxy_mock.import_mocks(snapshot)  # merge into what is already configured
 proxy_mock.import_mocks(snapshot, mode="replace")  # or replace the storage
 ```
 

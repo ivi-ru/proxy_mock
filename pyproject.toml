@@ -67,7 +67,7 @@ include = ["proxy_mock", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
+target-version = "py311"
 exclude = [
     ".git",
     ".hg",
