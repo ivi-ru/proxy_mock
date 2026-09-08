@@ -1,9 +1,11 @@
 import os
+from urllib.parse import quote, urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx2
 from fastapi import Request
-from yarl import URL
+
+from proxy_mock.core.urls import proxy_hostname
 
 # Unique process id. Regenerated on every start, so markers left by previous
 # instances cannot cause false positives.
@@ -60,14 +62,15 @@ def is_proxy_host_allowed(proxy_host: str) -> bool:
     allowed = get_allowed_proxy_hosts()
     if allowed is None:
         return True
-    host = (URL(proxy_host).host or "").lower()
+    host = proxy_hostname(proxy_host) or ""
     return host in allowed
 
 
 def make_proxy_request_url(request_url: str, proxy_host: str) -> str:
-    req_url = URL(request_url)
-    proxy_url = URL(proxy_host).with_path(req_url.path).with_query(req_url.query)
-    return proxy_url.human_repr()
+    incoming = urlsplit(request_url)
+    target = urlsplit(proxy_host)
+    # Replace the target path/query while keeping encoded delimiters and repeated query keys.
+    return urlunsplit((target.scheme, target.netloc, incoming.path or "/", incoming.query, ""))
 
 
 def filter_proxy_response_headers(headers: httpx2.Headers) -> dict:
@@ -85,7 +88,13 @@ async def proxy_request_to_host(
     proxy_host: str,
     http_client: httpx2.AsyncClient,
 ) -> httpx2.Response:
-    request_url = make_proxy_request_url(str(request_data.url), proxy_host)
+    raw_path = request_data.scope.get("raw_path")
+    incoming = request_data.url.replace(
+        path=raw_path.decode("ascii") if raw_path is not None else quote(request_data.scope["path"], safe="/"),
+        query=request_data.scope["query_string"].decode("ascii"),
+        fragment="",
+    )
+    request_url = make_proxy_request_url(str(incoming), proxy_host)
 
     headers = filter_proxy_request_headers(request_data.headers)
     # Append ourselves to the instance chain so an incoming loop can be detected.

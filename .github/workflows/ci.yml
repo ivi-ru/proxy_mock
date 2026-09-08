@@ -124,3 +124,16 @@ jobs:
           docker logs proxy_mock
           docker stop proxy_mock
           exit 1
+
+      - name: Verify the container-to-container example
+        working-directory: examples/compose
+        env:
+          PROXY_MOCK_IMAGE: proxy_mock
+        run: |
+          docker compose up -d --wait proxy-mock app
+          docker compose run --rm check
+
+      - name: Clean up the example
+        if: always()
+        working-directory: examples/compose
+        run: docker compose down --remove-orphans

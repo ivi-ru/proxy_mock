@@ -2,7 +2,6 @@ import os
 from contextlib import asynccontextmanager
 
 import httpx2
-from aiocache import Cache
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -13,6 +12,7 @@ from proxy_mock.api.routes.traffic import router as traffic_router
 from proxy_mock.core.logging import app_logger
 from proxy_mock.core.settings import get_version_from_pyproject, record_unknown_traffic_default
 from proxy_mock.repositories.traffic_store import TrafficStore
+from proxy_mock.repositories.ttl_cache import TTLCache
 from proxy_mock.services.snapshot import import_snapshot
 from proxy_mock.services.traffic_service import new_traffic_data
 from proxy_mock.utils import log_request
@@ -49,6 +49,7 @@ async def app_lifespan(app: FastAPI):
         yield
     finally:
         await app.state.http_client.aclose()
+        await app.state.cache.close()
 
 
 class ProxyMockApp(FastAPI):
@@ -56,7 +57,7 @@ class ProxyMockApp(FastAPI):
         kwargs.setdefault("lifespan", app_lifespan)
         super().__init__(*args, **kwargs)
 
-        self.state.cache = Cache(Cache.MEMORY, namespace="mocks")
+        self.state.cache = TTLCache()
         self.state.traffic_store = TrafficStore()
         # Toggled at runtime via POST /traffic/settings, so it lives in state rather than in a module constant.
         self.state.record_unknown_traffic = record_unknown_traffic_default()

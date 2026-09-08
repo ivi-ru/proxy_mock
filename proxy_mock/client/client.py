@@ -1,9 +1,9 @@
 import warnings
 from http import HTTPMethod
 from typing import Any
+from urllib.parse import urlencode
 
 import msgpack
-from yarl import URL
 
 from proxy_mock.client.route import Route
 from proxy_mock.client.service_endpoints import Endpoints
@@ -141,12 +141,12 @@ class ProxyMock(Route):
             **({"method": method} if method else {}),
             **({"limit": limit} if limit is not None else {}),
         }
-        full_path = URL().with_path(Endpoints.TRAFFIC).with_query(query_params).human_repr()
+        full_path = f"{Endpoints.TRAFFIC}?{urlencode(query_params)}"
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def get_storage(self, path: str | None = None):
         query_params = {**({"path": path} if path else {})}
-        full_path = URL().with_path(Endpoints.STORAGE).with_query(query_params).human_repr()
+        full_path = f"{Endpoints.STORAGE}?{urlencode(query_params)}"
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def clean_storage(self, path: str | None = None):
@@ -161,7 +161,7 @@ class ProxyMock(Route):
                 DeprecationWarning,
                 stacklevel=2,
             )
-            full_path = URL().with_path(Endpoints.STORAGE_CLEAN).with_query({"path": path}).human_repr()
+            full_path = f"{Endpoints.STORAGE_CLEAN}?{urlencode({'path': path})}"
             return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
 
         return super().execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.STORAGE)
@@ -172,11 +172,11 @@ class ProxyMock(Route):
 
     def import_mocks(self, snapshot: dict, mode: str = "merge"):
         """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
-        full_path = URL().with_path(Endpoints.STORAGE_SNAPSHOT).with_query({"mode": mode}).human_repr()
+        full_path = f"{Endpoints.STORAGE_SNAPSHOT}?{urlencode({'mode': mode})}"
         return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
 
     def delete_mock(self, path: str):
-        full_path = URL().with_path(Endpoints.STORAGE).with_query({"path": path}).human_repr()
+        full_path = f"{Endpoints.STORAGE}?{urlencode({'path': path})}"
         return super().execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
 
     def clean_traffic(self):

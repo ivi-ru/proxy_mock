@@ -24,6 +24,10 @@ RUN UV_PROJECT_ENVIRONMENT=/opt/venv-main uv sync --locked --no-install-project 
 # --- Final slim server image ---
 FROM base AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/ivi-ru/proxy_mock"
+LABEL org.opencontainers.image.description="HTTP mock and proxy server for automated tests"
+LABEL org.opencontainers.image.licenses="MIT"
+
 COPY --from=builder /opt/venv-main /opt/venv-main
 ENV PATH="/opt/venv-main/bin:$PATH"
 ENV PYTHONPATH=/var/www/proxy_mock

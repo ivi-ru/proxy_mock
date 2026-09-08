@@ -3,7 +3,6 @@ import time
 from http import HTTPMethod
 
 import pytest
-from yarl import URL
 
 from proxy_mock.client import ProxyMock
 from tests.constants import (
@@ -165,7 +164,8 @@ class TestConfigure:
 
         test_response = client.execute_request(
             input_data_method[0] if input_data_method else HTTPMethod.POST,
-            URL().with_path(configure_mock_data["path"]).with_query(rule_data["input_data"].get("query")).human_repr(),
+            configure_mock_data["path"],
+            params=rule_data["input_data"].get("query"),
             data=input_data_body if isinstance(input_data_body, bytes) else json.dumps(input_data_body),
             headers=rule_data["input_data"].get("headers"),
         )
