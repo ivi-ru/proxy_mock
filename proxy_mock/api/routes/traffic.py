@@ -1,6 +1,5 @@
 import json
 
-from aiocache import Cache
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -95,6 +94,5 @@ async def _update_traffic_settings(request: Request) -> JSONResponse:
 @router.post("/cache/clean")
 async def clean_cache(request: Request):
     """Deprecated: response caching is removed in 3.0 together with this endpoint."""
-    await request.app.state.cache.close()
-    request.app.state.cache = Cache(Cache.MEMORY, namespace="mocks")
+    await request.app.state.cache.clear()
     return mark_deprecated(JSONResponse({"success": True}, 200), "POST /cache/clean")

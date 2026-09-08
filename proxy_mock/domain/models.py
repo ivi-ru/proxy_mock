@@ -2,7 +2,8 @@ import time
 from http import HTTPMethod
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
-from yarl import URL
+
+from proxy_mock.core.urls import proxy_hostname
 
 
 class MockDataSchema(BaseModel):
@@ -33,7 +34,7 @@ class RulesInputDataSchema(BaseModel):
 
     @field_validator("proxy_host")
     def check_proxy_host(cls, value):
-        if value and not URL(value).is_absolute():
+        if value and not proxy_hostname(value):
             raise ValueError("Parameter 'proxy_host' must be an absolute URL")
         return value
 
@@ -61,7 +62,7 @@ class ConfigureMockRequestSchema(MockPathSchema):
 
     @field_validator("proxy_host")
     def check_proxy_host(cls, value):
-        if value and not URL(value).is_absolute():
+        if value and not proxy_hostname(value):
             raise ValueError("Parameter 'proxy_host' must be an absolute URL")
         return value
 

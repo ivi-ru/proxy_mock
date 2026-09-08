@@ -46,6 +46,8 @@ Expected result: **1 passed**. The fixtures start a server on a free loopback po
 state after the test, and shut it down at the end of the session. No separate server is needed.
 
 The [runnable examples](examples/README.md) include this test and a JSON snapshot round trip.
+The [Docker Compose example](examples/compose/README.md) shows an application in a separate
+container calling a mocked inventory service and verifies the captured request.
 To use the tool outside pytest, start the standalone server with `proxy-mock --port 5000`.
 
 ---
@@ -149,7 +151,11 @@ Make sure the following are installed:
 
 ### 🐳 Running in Docker
 
-Every release is published to GHCR, so nothing has to be built:
+The [Docker Compose example](examples/compose/README.md) includes a complete local build and
+an application calling its mock from another container.
+
+Every release is published to GHCR. The package currently requires registry access because
+public visibility is disabled by the organization. If you have access, no local build is needed:
 
 ```bash
 docker run --rm -p 5000:5000 ghcr.io/ivi-ru/proxy_mock:latest
@@ -163,10 +169,11 @@ docker run --rm -p 5000:5000 -v "$PWD/mocks.json:/mocks.json" \
     python -m proxy_mock --host=0.0.0.0 --port=5000 --mocks /mocks.json
 ```
 
-To build the image from the working tree instead:
+To build from a public checkout without GHCR access:
 
 ```bash
-make docker_run
+docker build -t proxy-mock .
+docker run --rm -p 127.0.0.1:5000:5000 proxy-mock
 ```
 
 Once it is up, the service listens on `http://localhost:5000`.

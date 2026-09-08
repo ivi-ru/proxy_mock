@@ -1,5 +1,23 @@
-Unreleased
-==========
+Version 2.12.0
+==============
+
+Released on 2026-09-08.
+
+* **Fewer runtime dependencies.** Replaced `aiocache` with a small process-local TTL cache and
+  `yarl` with `urllib.parse`; `multidict` and `propcache` are no longer installed either. A clean
+  Python 3.12 installation resolves to 22 distributions including proxy-mock, down from 26.
+  Existing cache settings, expiration, and the deprecated cleanup endpoint remain compatible.
+* **Client compatibility is preserved.** The synchronous client still uses `requests` and
+  returns `requests.Response`, including `.ok`, truth testing, redirect handling and transport
+  exceptions. Its planned migration to `httpx2` moves to 3.0 because changing that public
+  response type would break callers. The asynchronous client continues to use `httpx2`.
+* **Fixed:** proxied URLs preserve percent-encoded path delimiters and repeated query keys.
+  Client path filters, IPv6 targets and international hostnames are covered by regression tests.
+* Added a self-contained Docker Compose example: a storefront calls a mocked inventory service
+  from another container, and a check verifies both the application response and captured
+  traffic. Host ports bind to loopback. CI runs the example against the image built from the
+  current checkout; the published GHCR image can also be used when registry access is available.
+* Container images now include OCI source, description and license labels.
 
 * Added complete pytest examples for configuring an HTTP dependency, inspecting traffic, and
   restoring a JSON mock snapshot. The README quick start runs without an external service, and

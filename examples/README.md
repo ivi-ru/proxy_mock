@@ -31,3 +31,10 @@ uv run pytest -q examples/test_http_dependency.py
 
 CI also copies the examples outside the repository and runs them against the built wheel. This
 checks that the public package and its registered fixtures are sufficient to run the examples.
+
+## Run an application and its mock in separate containers
+
+The [Docker Compose example](compose/README.md) starts a tiny storefront and a separate
+proxy-mock container, configures inventory data, and verifies both the storefront response and its
+captured request. It includes start, check, and cleanup commands and explains container DNS
+names versus host URLs.

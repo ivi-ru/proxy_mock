@@ -8,9 +8,15 @@ does not start. This file is run against an installed wheel in a clean virtualen
 import shutil
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 import requests
+
+
+def test_removed_dependencies_are_not_installed():
+    for package in ("aiocache", "yarl", "multidict", "propcache"):
+        assert find_spec(package) is None, f"unexpected runtime dependency: {package}"
 
 
 def _console_script() -> str:

@@ -41,8 +41,9 @@ should hand-roll. Everything below that threshold gets written here instead.
 The reason is the second audience: projects that install proxy-mock into their own test
 environment inherit every dependency and every version constraint we take on.
 
-Current footprint, measured on Python 3.12: `pip install proxy_mock` resolves to **26
-distributions** — the package plus 25 dependencies. Reducing that is the point of 2.12 and 3.0.
+Current footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
+distributions** — the package plus 21 dependencies, down from 26 distributions in 2.11.0.
+The install split and synchronous client migration in 3.0 will reduce this further.
 
 ### Public API contract
 
@@ -105,17 +106,22 @@ Additive: nothing here changes existing behaviour.
 
 ---
 
-## 2.12 — dependency diet
+## 2.12 — dependency diet (released)
 
-No behaviour change: same API, same responses, fewer things installed.
+No breaking API changes: fewer things installed, with the existing clients and cache API intact.
 
 | Removed | Replaced by | Why |
 |---------|-------------|-----|
-| `aiocache` | ~40 lines of TTL dictionary | Pre-1.0 dependency used in two places, for a cache that 3.0 deletes anyway |
-| `yarl` | `urllib.parse` | Around fifteen one-line call sites; pulls in `multidict` and `propcache`, both C extensions, which is exactly what delays support for a new interpreter |
-| `requests` | `httpx2`, already a dependency | One HTTP library instead of two; also removes `urllib3`, `certifi` and `charset-normalizer` |
+| `aiocache` | Small TTL dictionary with event-loop timers | Preserves expiration and cleanup for a cache that 3.0 deletes |
+| `yarl` | `urllib.parse` | Also removes `multidict` and `propcache`, including their compiled extensions |
 
-Target: **25 → 17** runtime distributions, three fewer compiled ones.
+Measured result on Python 3.12: **26 → 22** installed distributions including proxy-mock,
+three fewer packages with compiled extensions. Counts reflect clean installations on 2026-09-08
+and may change as transitive dependencies evolve.
+
+The original plan also removed `requests`, but `ProxyMock.execute_request()` publicly returns
+`requests.Response`. Substituting `httpx2.Response` changes `.ok`, truth testing, exceptions and
+other caller-visible behaviour. This part moves to 3.0 under the public API contract above.
 
 ---
 
@@ -128,7 +134,7 @@ All service endpoints move under a single prefix (`/__admin` by default, configu
 no longer collide with a service endpoint.
 
 Today that isolation depends on how FastAPI nests routers added through `include_router` — see
-the docstring in `tests/test_service_routes.py` — which is why `fastapi>=0.136` is pinned as a
+the docstring in `tests/test_service_routes.py` — which is why `fastapi>=0.137` is pinned as a
 lower bound. It also means configuring a mock for `/proxy_mock` currently returns `success: true`
 and then never serves that mock. After the move the isolation is ours, and the FastAPI floor can
 be lowered again.
@@ -150,10 +156,18 @@ close to a no-op by construction — the mock is already static and cheap — an
 it does something, a proxied response, is better served by record & replay, which is explicit
 about what was recorded and lets you look at it.
 
+### Synchronous client transport
+
+Both clients use `httpx2`, removing `requests` and the dependencies used only by it. The
+migration guide must cover the new response type, exception classes, request keyword arguments,
+redirect defaults, timeouts and session customisation. Existing `requests.Response` behaviour
+remains available throughout 2.x.
+
 ### Install split
 
-The base install becomes the clients only (**8 distributions**); the server moves behind an
-extra, `proxy_mock[server]` (**17**). A project that installs proxy-mock to talk to a running
+The base install becomes the clients only; the server moves behind an
+extra, `proxy_mock[server]`. Exact distribution counts will be measured at release time.
+A project that installs proxy-mock to talk to a running
 instance stops inheriting FastAPI, uvicorn and their constraints.
 
 ### Entry point
