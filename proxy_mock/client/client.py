@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 import msgpack
 
+from proxy_mock.client.migration import MIGRATION_URL
 from proxy_mock.client.route import Route
 from proxy_mock.client.service_endpoints import Endpoints
 
@@ -23,7 +24,9 @@ def _build_traffic_settings_payload(record_unknown_traffic: bool | None, max_ite
 
 class ProxyMock(Route):
     def get_proxy_mock(self):
-        return super().execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.PROXY_MOCK)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.PROXY_MOCK)
+        )
 
     def _build_mock_request_data(
         self,
@@ -62,6 +65,11 @@ class ProxyMock(Route):
         if rules is not None:
             request_data["rules"] = rules
         if cache_time is not None:
+            warnings.warn(
+                f"cache_time is deprecated and will be removed in 3.0; see {MIGRATION_URL}",
+                DeprecationWarning,
+                stacklevel=3,
+            )
             request_data["cache_time"] = cache_time
 
         request_data.update(kwargs)
@@ -70,7 +78,7 @@ class ProxyMock(Route):
     def _send_configure(self, method: HTTPMethod, payload: dict):
         return super().execute_request_and_get_response_body(
             method=method,
-            route=Endpoints.CONFIGURE_MOCK,
+            route=self._service_endpoint(Endpoints.CONFIGURE_MOCK),
             data=msgpack.packb(payload),
             headers={"Content-Type": CONFIGURE_CONTENT_TYPE},
         )
@@ -141,12 +149,12 @@ class ProxyMock(Route):
             **({"method": method} if method else {}),
             **({"limit": limit} if limit is not None else {}),
         }
-        full_path = f"{Endpoints.TRAFFIC}?{urlencode(query_params)}"
+        full_path = f"{self._service_endpoint(Endpoints.TRAFFIC)}?{urlencode(query_params)}"
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def get_storage(self, path: str | None = None):
         query_params = {**({"path": path} if path else {})}
-        full_path = f"{Endpoints.STORAGE}?{urlencode(query_params)}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode(query_params)}"
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def clean_storage(self, path: str | None = None):
@@ -161,34 +169,42 @@ class ProxyMock(Route):
                 DeprecationWarning,
                 stacklevel=2,
             )
-            full_path = f"{Endpoints.STORAGE_CLEAN}?{urlencode({'path': path})}"
+            full_path = f"{self._service_endpoint(Endpoints.STORAGE_CLEAN)}?{urlencode({'path': path})}"
             return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
 
-        return super().execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.STORAGE)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.DELETE, self._service_endpoint(Endpoints.STORAGE)
+        )
 
     def export_mocks(self):
         """Export every configured mock as a snapshot document."""
-        return super().execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.STORAGE_SNAPSHOT)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)
+        )
 
     def import_mocks(self, snapshot: dict, mode: str = "merge"):
         """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
-        full_path = f"{Endpoints.STORAGE_SNAPSHOT}?{urlencode({'mode': mode})}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)}?{urlencode({'mode': mode})}"
         return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
 
     def delete_mock(self, path: str):
-        full_path = f"{Endpoints.STORAGE}?{urlencode({'path': path})}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode({'path': path})}"
         return super().execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
 
     def clean_traffic(self):
-        return super().execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.TRAFFIC)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.DELETE, self._service_endpoint(Endpoints.TRAFFIC)
+        )
 
     def get_traffic_settings(self):
-        return super().execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.TRAFFIC_SETTINGS)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.TRAFFIC_SETTINGS)
+        )
 
     def set_traffic_settings(self, record_unknown_traffic: bool | None = None, max_items: int | None = None):
         return super().execute_request_and_get_response_body(
             HTTPMethod.PATCH,
-            Endpoints.TRAFFIC_SETTINGS,
+            self._service_endpoint(Endpoints.TRAFFIC_SETTINGS),
             json=_build_traffic_settings_payload(record_unknown_traffic, max_items),
         )
 
@@ -199,4 +215,6 @@ class ProxyMock(Route):
             DeprecationWarning,
             stacklevel=2,
         )
-        return super().execute_request_and_get_response_body(HTTPMethod.POST, Endpoints.CACHE_CLEAN)
+        return super().execute_request_and_get_response_body(
+            HTTPMethod.POST, self._service_endpoint(Endpoints.CACHE_CLEAN)
+        )

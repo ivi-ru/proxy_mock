@@ -4,10 +4,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from proxy_mock.core.deprecation import mark_deprecated
+from proxy_mock.core.deprecation import LegacyAdminRoute
 from proxy_mock.domain.models import TrafficSettingsSchema
 
-router = APIRouter()
+router = APIRouter(route_class=LegacyAdminRoute, deprecated=True)
 
 
 def _traffic_settings(request: Request) -> dict:
@@ -39,7 +39,7 @@ async def clean_traffic(request: Request):
     """Deprecated alias for clearing traffic. The RESTful variant is `DELETE /traffic`."""
     await request.app.state.traffic_store.clear()
     response = JSONResponse({"success": True, "data": []}, 200)
-    return mark_deprecated(response, "POST /traffic/clean", "DELETE /traffic")
+    return response
 
 
 @router.get("/traffic/settings")
@@ -60,7 +60,7 @@ async def patch_traffic_settings(request: Request):
 async def set_traffic_settings(request: Request):
     """Deprecated alias for updating the settings. The RESTful variant is `PATCH /traffic/settings`."""
     response = await _update_traffic_settings(request)
-    return mark_deprecated(response, "POST /traffic/settings", "PATCH /traffic/settings")
+    return response
 
 
 async def _update_traffic_settings(request: Request) -> JSONResponse:
@@ -95,4 +95,4 @@ async def _update_traffic_settings(request: Request) -> JSONResponse:
 async def clean_cache(request: Request):
     """Deprecated: response caching is removed in 3.0 together with this endpoint."""
     await request.app.state.cache.clear()
-    return mark_deprecated(JSONResponse({"success": True}, 200), "POST /cache/clean")
+    return JSONResponse({"success": True}, 200)

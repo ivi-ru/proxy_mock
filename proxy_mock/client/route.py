@@ -1,7 +1,10 @@
 import json
+import warnings
 from typing import Any
 
 import requests
+
+from proxy_mock.client.migration import MIGRATION_URL, service_endpoint, validate_admin_prefix
 
 
 class ProxyMockRequestError(Exception):
@@ -13,10 +16,20 @@ class ProxyMockResponseError(Exception):
 
 
 class Route:
-    def __init__(self, host: str, timeout: float = 10.0) -> None:
+    def __init__(self, host: str, timeout: float = 10.0, *, admin_prefix: str | None = None) -> None:
+        self.admin_prefix = validate_admin_prefix(admin_prefix)
+        warnings.warn(
+            "ProxyMock will use httpx2 instead of requests in 3.0; response types, exceptions, "
+            f"and transport options will change. See {MIGRATION_URL}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.host = host.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+
+    def _service_endpoint(self, endpoint: str) -> str:
+        return service_endpoint(endpoint, self.admin_prefix)
 
     def _build_url(self, command: str) -> str:
         command = command.strip("/")

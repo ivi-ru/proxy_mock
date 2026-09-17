@@ -3,9 +3,10 @@ import platform
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from proxy_mock.core.deprecation import LegacyAdminRoute
 from proxy_mock.services.mock_service import count_mocks
 
-router = APIRouter()
+router = APIRouter(route_class=LegacyAdminRoute, deprecated=True)
 
 
 @router.get("/proxy_mock")

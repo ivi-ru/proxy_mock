@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from proxy_mock.core.deprecation import mark_deprecated
+from proxy_mock.core.deprecation import LegacyAdminRoute
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.services.mock_service import (
     cleanup_storage,
@@ -12,7 +12,7 @@ from proxy_mock.services.mock_service import (
 )
 from proxy_mock.services.snapshot import SnapshotError, export_snapshot, import_snapshot
 
-router = APIRouter()
+router = APIRouter(route_class=LegacyAdminRoute, deprecated=True)
 
 
 @router.get("/storage")
@@ -85,4 +85,4 @@ async def clean_storage(request: Request):
         result = await cleanup_storage(request.app)
 
     response = JSONResponse({"success": result, "data": convert_bytes_to_str(await return_storage())}, 200)
-    return mark_deprecated(response, "POST /storage/clean", "DELETE /storage")
+    return response

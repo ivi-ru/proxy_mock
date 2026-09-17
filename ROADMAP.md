@@ -125,13 +125,30 @@ other caller-visible behaviour. This part moves to 3.0 under the public API cont
 
 ---
 
+## 2.13 — migration preparation
+
+The final planned feature release before 3.0 keeps 2.x behaviour and prepares consumers:
+
+- Mark every legacy administrative operation with migration headers and bounded log warnings.
+- Offer opt-in resource paths through `PROXY_MOCK_ADMIN_PREFIX`, with explicit client support.
+  Aliases stay disabled by default in 2.x to avoid collisions with existing user mocks.
+- Warn Python callers about the synchronous transport change and deprecated cache usage.
+- Publish [the migration guide](MIGRATING.md), including a `<3` version pin for compatibility.
+- Preserve the old API and transport until 3.0; maintenance fixes can still ship on 2.x.
+
+---
+
 ## 3.0 — one breaking release
 
-### Service endpoints move behind a prefix
+### RESTful administrative API behind a prefix
 
 All service endpoints move under a single prefix (`/__admin` by default, configurable through
-`PROXY_MOCK_ADMIN_PREFIX`): eleven routes become five paths, all REST-shaped, and a user mock can
-no longer collide with a service endpoint.
+`PROXY_MOCK_ADMIN_PREFIX`), so a user mock can no longer collide with a service endpoint.
+Every existing administrative endpoint must be reviewed and redesigned as a RESTful resource
+API in 3.0: resource-oriented paths, appropriate HTTP methods, and consistent status codes and
+error responses. This includes mock configuration and storage, traffic, settings, snapshots,
+and service information. The same contract applies to the new 3.0 features. Moving the old
+action-style endpoints behind a prefix alone does not satisfy this requirement.
 
 Today that isolation depends on how FastAPI nests routers added through `include_router` — see
 the docstring in `tests/test_service_routes.py` — which is why `fastapi>=0.137` is pinned as a
@@ -144,8 +161,8 @@ be lowered again.
 | `GET /proxy_mock` | `GET /__admin` |
 | `POST /configure_mock`, `PATCH /configure_mock` | `POST /__admin/mocks`, `PATCH /__admin/mocks` |
 | `GET /storage`, `DELETE /storage`, `POST /storage/clean` | `GET /__admin/mocks`, `DELETE /__admin/mocks` |
-| `GET /traffic`, `POST /traffic/clean` | `GET /__admin/traffic`, `DELETE /__admin/traffic` |
-| `GET /traffic/settings`, `POST /traffic/settings` | `GET /__admin/settings`, `PATCH /__admin/settings` |
+| `GET /traffic`, `DELETE /traffic`, `POST /traffic/clean` | `GET /__admin/traffic`, `DELETE /__admin/traffic` |
+| `GET /traffic/settings`, `PATCH /traffic/settings`, `POST /traffic/settings` | `GET /__admin/settings`, `PATCH /__admin/settings` |
 | `GET` / `POST /storage/snapshot` | `GET` / `POST /__admin/snapshot` |
 | `POST /cache/clean` | removed with the cache |
 
@@ -155,6 +172,18 @@ be lowered again.
 close to a no-op by construction — the mock is already static and cheap — and the one case where
 it does something, a proxied response, is better served by record & replay, which is explicit
 about what was recorded and lets you look at it.
+
+### Record & replay
+
+Required for 3.0: proxy a request to the real upstream and store its response as a mock that
+can be inspected and replayed. This makes recording explicit and replaces the useful proxied
+response use case of the removed cache.
+
+### Response sequences
+
+Required for 3.0: configure an ordered sequence of responses for a single path, such as A on
+the first call and B on the second. Build on the existing rule engine and document sequence
+exhaustion and reset behaviour without introducing a scenario engine.
 
 ### Synchronous client transport
 
@@ -179,13 +208,8 @@ The documented entry point becomes the `proxy-mock` console script, with
 
 ## Under consideration
 
-Not scheduled. Listed so that the intent is on record.
+Not scheduled for 3.0. Listed so that the intent is on record.
 
-- **Record & replay** — proxy a request to the real upstream and store the response as a mock.
-  The proxy half already exists, and this is the well-defined feature that response caching was
-  reaching for.
-- **Response sequences** — first call returns A, second returns B, for a single path. Fits the
-  existing rule engine.
 - **Optional auth token** — a single shared token on the service endpoints
   (`PROXY_MOCK_TOKEN`), so an instance can be reachable outside localhost.
 - **gRPC** — deferred, and not merely unscheduled. The blockers are structural: uvicorn does not

@@ -5,10 +5,12 @@ import httpx2
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from proxy_mock.api.routes.admin import create_admin_router
 from proxy_mock.api.routes.configure import router as configure_router
 from proxy_mock.api.routes.service import router as service_router
 from proxy_mock.api.routes.storage import router as storage_router
 from proxy_mock.api.routes.traffic import router as traffic_router
+from proxy_mock.client.migration import validate_admin_prefix
 from proxy_mock.core.logging import app_logger
 from proxy_mock.core.settings import get_version_from_pyproject, record_unknown_traffic_default
 from proxy_mock.repositories.traffic_store import TrafficStore
@@ -69,6 +71,10 @@ class ProxyMockApp(FastAPI):
 def create_app() -> ProxyMockApp:
     app = ProxyMockApp(title="Proxy Mock")
     app.state.version = get_version_from_pyproject(app.logger)
+
+    app.state.admin_prefix = validate_admin_prefix(os.getenv("PROXY_MOCK_ADMIN_PREFIX"))
+    if app.state.admin_prefix is not None:
+        app.include_router(create_admin_router(app.state.admin_prefix))
 
     app.include_router(service_router)
     app.include_router(configure_router)
