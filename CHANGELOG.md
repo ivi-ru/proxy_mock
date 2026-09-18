@@ -1,5 +1,7 @@
-Version 2.13.0 (unreleased)
-==========================
+Version 2.13.0
+==============
+
+Released on 2026-09-18.
 
 * Added opt-in administrative resource paths, enabled by `PROXY_MOCK_ADMIN_PREFIX`, with
   matching `admin_prefix` options on `ProxyMock` and `AsyncProxyMock`. Legacy paths and their
