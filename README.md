@@ -8,7 +8,11 @@
 **Proxy Mock** is a tool that combines a proxy server and a mock server.
 It suits automated tests, integration scenarios and local debugging of service-to-service calls.
 
-[Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
+[Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
+
+> **Preparing for 3.0:** 2.13 preserves the 2.x API and adds migration warnings and opt-in
+> administrative aliases. Pin `proxy_mock>=2.13,<3` to retain compatibility while upgrading.
+> See [Migrating from 2.x to 3.0](MIGRATING.md) for routes, client transport and installation.
 
 ## Quick start
 
@@ -256,6 +260,7 @@ Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_
 
 | Variable | Values | Description |
 |----------|--------|-------------|
+| `PROXY_MOCK_ADMIN_PREFIX` | unset (aliases disabled in 2.13); e.g. `/__admin` | Opt-in administrative resource paths; old paths keep working. See [migration guide](MIGRATING.md) |
 | `PROXY_MOCK_LOG_REQUESTS` | `full` (default), `minimal`, `off` | Logging level for incoming requests |
 | `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `PATCH /traffic/settings` |
 | `PROXY_MOCK_PROXY_TIMEOUT` | float, seconds (default `30`) | Timeout for outgoing proxied requests |
@@ -291,8 +296,10 @@ A short reference and the key examples follow.
 | `GET` | `/traffic/settings` | Current traffic recording settings | `200` — `{"success": true, "data": {"record_unknown_traffic": true, "max_items": 1000}}` |
 | `PATCH` | `/traffic/settings` | Change traffic settings. Body: `{"record_unknown_traffic": bool}` and/or `{"max_items": int > 0}`; the update is partial | `200` — same shape as GET; `400` on malformed JSON, `422` on an invalid or empty body |
 
-**Deprecated, removed in 3.0.** They still work and answer exactly as before, but send a
-`Deprecation: true` response header and a `Link` to the replacement:
+**All legacy administrative paths move in 3.0.** In 2.13 they keep their response bodies and
+status codes and return a `Deprecation` date header and a migration `Link`. The following
+action-style operations also have replacements already available in 2.x. See
+[the migration guide](MIGRATING.md) for opt-in `/__admin` aliases:
 
 | Method | URL | Replacement |
 |--------|-----|-------------|

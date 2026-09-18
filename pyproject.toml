@@ -1,6 +1,6 @@
 [project]
 name = "proxy_mock"
-version = "2.12.0"
+version = "2.13.0"
 description = "Tool for proxying and mocking HTTP traffic"
 authors = [
     { name = "Andrey Ryabokon", email = "aryabokon@ivi.ru" }
@@ -61,7 +61,7 @@ build-backend = "hatchling.build"
 packages = ["proxy_mock"]
 
 [tool.hatch.build.targets.sdist]
-include = ["proxy_mock", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+include = ["proxy_mock", "README.md", "CHANGELOG.md", "MIGRATING.md", "LICENSE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 120

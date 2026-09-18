@@ -5,12 +5,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from proxy_mock.core.deprecation import LegacyAdminRoute
 from proxy_mock.domain.constants import ParseError
 from proxy_mock.domain.models import ConfigureMockRequestSchema
 from proxy_mock.services.mock_service import mock_initialization, patch_mock_data, return_mock_data
 from proxy_mock.services.request_parser import parse_configure
 
-router = APIRouter()
+router = APIRouter(route_class=LegacyAdminRoute, deprecated=True)
 
 
 @router.post("/configure_mock")

@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import httpx2
 import msgpack
 
+from proxy_mock.client.migration import MIGRATION_URL, service_endpoint, validate_admin_prefix
 from proxy_mock.client.service_endpoints import Endpoints
 
 CONFIGURE_CONTENT_TYPE = "application/octet-stream"
@@ -30,10 +31,14 @@ class AsyncProxyMockResponseError(Exception):
 
 
 class AsyncProxyMock:
-    def __init__(self, host: str, timeout: float = 10.0) -> None:
+    def __init__(self, host: str, timeout: float = 10.0, *, admin_prefix: str | None = None) -> None:
+        self.admin_prefix = validate_admin_prefix(admin_prefix)
         self.host = host.rstrip("/")
         self.timeout = timeout
         self._client = httpx2.AsyncClient(base_url=self.host, timeout=timeout)
+
+    def _service_endpoint(self, endpoint: str) -> str:
+        return service_endpoint(endpoint, self.admin_prefix)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -122,6 +127,11 @@ class AsyncProxyMock:
         if rules is not None:
             request_data["rules"] = rules
         if cache_time is not None:
+            warnings.warn(
+                f"cache_time is deprecated and will be removed in 3.0; see {MIGRATION_URL}",
+                DeprecationWarning,
+                stacklevel=3,
+            )
             request_data["cache_time"] = cache_time
 
         request_data.update(kwargs)
@@ -130,13 +140,15 @@ class AsyncProxyMock:
     async def _send_configure(self, method: HTTPMethod, payload: dict):
         return await self.execute_request_and_get_response_body(
             method=method,
-            route=Endpoints.CONFIGURE_MOCK,
+            route=self._service_endpoint(Endpoints.CONFIGURE_MOCK),
             content=msgpack.packb(payload),
             headers={"Content-Type": CONFIGURE_CONTENT_TYPE},
         )
 
     async def get_proxy_mock(self):
-        return await self.execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.PROXY_MOCK)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.PROXY_MOCK)
+        )
 
     async def configure_mock(
         self,
@@ -204,12 +216,12 @@ class AsyncProxyMock:
             **({"method": method} if method else {}),
             **({"limit": limit} if limit is not None else {}),
         }
-        full_path = f"{Endpoints.TRAFFIC}?{urlencode(query_params)}"
+        full_path = f"{self._service_endpoint(Endpoints.TRAFFIC)}?{urlencode(query_params)}"
         return await self.execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     async def get_storage(self, path: str | None = None):
         query_params = {**({"path": path} if path else {})}
-        full_path = f"{Endpoints.STORAGE}?{urlencode(query_params)}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode(query_params)}"
         return await self.execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     async def clean_storage(self, path: str | None = None):
@@ -224,34 +236,42 @@ class AsyncProxyMock:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            full_path = f"{Endpoints.STORAGE_CLEAN}?{urlencode({'path': path})}"
+            full_path = f"{self._service_endpoint(Endpoints.STORAGE_CLEAN)}?{urlencode({'path': path})}"
             return await self.execute_request_and_get_response_body(HTTPMethod.POST, full_path)
 
-        return await self.execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.STORAGE)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.DELETE, self._service_endpoint(Endpoints.STORAGE)
+        )
 
     async def export_mocks(self):
         """Export every configured mock as a snapshot document."""
-        return await self.execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.STORAGE_SNAPSHOT)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)
+        )
 
     async def import_mocks(self, snapshot: dict, mode: str = "merge"):
         """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
-        full_path = f"{Endpoints.STORAGE_SNAPSHOT}?{urlencode({'mode': mode})}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)}?{urlencode({'mode': mode})}"
         return await self.execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
 
     async def delete_mock(self, path: str):
-        full_path = f"{Endpoints.STORAGE}?{urlencode({'path': path})}"
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode({'path': path})}"
         return await self.execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
 
     async def clean_traffic(self):
-        return await self.execute_request_and_get_response_body(HTTPMethod.DELETE, Endpoints.TRAFFIC)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.DELETE, self._service_endpoint(Endpoints.TRAFFIC)
+        )
 
     async def get_traffic_settings(self):
-        return await self.execute_request_and_get_response_body(HTTPMethod.GET, Endpoints.TRAFFIC_SETTINGS)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.GET, self._service_endpoint(Endpoints.TRAFFIC_SETTINGS)
+        )
 
     async def set_traffic_settings(self, record_unknown_traffic: bool | None = None, max_items: int | None = None):
         return await self.execute_request_and_get_response_body(
             HTTPMethod.PATCH,
-            Endpoints.TRAFFIC_SETTINGS,
+            self._service_endpoint(Endpoints.TRAFFIC_SETTINGS),
             json=_build_traffic_settings_payload(record_unknown_traffic, max_items),
         )
 
@@ -262,4 +282,6 @@ class AsyncProxyMock:
             DeprecationWarning,
             stacklevel=2,
         )
-        return await self.execute_request_and_get_response_body(HTTPMethod.POST, Endpoints.CACHE_CLEAN)
+        return await self.execute_request_and_get_response_body(
+            HTTPMethod.POST, self._service_endpoint(Endpoints.CACHE_CLEAN)
+        )

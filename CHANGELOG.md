@@ -1,3 +1,22 @@
+Version 2.13.0
+==============
+
+Released on 2026-09-18.
+
+* Added opt-in administrative resource paths, enabled by `PROXY_MOCK_ADMIN_PREFIX`, with
+  matching `admin_prefix` options on `ProxyMock` and `AsyncProxyMock`. Legacy paths and their
+  JSON/msgpack contracts remain available. Aliases are disabled by default to avoid shadowing
+  existing user mocks. Invalid or overlapping prefixes fail at startup.
+* Every legacy administrative operation now carries a migration link and a RFC 9745
+  `Deprecation` date. This corrects the previous non-standard `true` value; handled error
+  responses are marked as well. Server warnings are limited to once per operation per process.
+* Added Python `DeprecationWarning` notices for the upcoming sync-client transport change and
+  explicit `cache_time` use. The synchronous client still returns `requests.Response`, and
+  cached responses and existing deprecated operations retain their 2.x behaviour.
+* Added `MIGRATING.md` covering the staged HTTP migration, transport compatibility, planned
+  installation split, cache removal and the required 3.0 record/replay and response sequences.
+  No 3.0 release date or automatic update check is introduced.
+
 Version 2.12.0
 ==============
 
