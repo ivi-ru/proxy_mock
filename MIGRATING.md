@@ -1,13 +1,12 @@
 # Migrating from 2.x to 3.0
 
-**3.0 is in development, not released.** This checkout implements its administrative REST API;
-package version metadata remains `2.13.0` until the final release-preparation step. Published
+**3.0 is in development, not released.** This checkout implements its administrative REST API
+and response sequences; package version metadata remains `2.13.0` until the final release-preparation step. Published
 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Record & replay, response sequences, snapshot evolution, cache removal, transport unification
-and the client/server installation split remain later steps. They are not implemented by the
-HTTP migration described here.
+Record & replay, snapshot evolution, cache removal, transport unification and the client/server
+installation split remain later steps. They are not implemented by this checkout.
 
 ## Administrative REST API in this checkout
 
@@ -131,6 +130,24 @@ The synchronous client still uses `requests`; changing transports and installati
 separate work. Deprecated caching also remains in this step, with cleanup at
 `DELETE /__admin/cache`. Do not depend on that resource in new tests: cache removal is planned for 3.0.
 
+## Response sequences in this checkout
+
+Mocks and rules accept `sequence: {"responses": [...], "on_exhaustion": "repeat_last"}`.
+The default repeats the final response; `on_exhaustion: "error"` returns `409` when all entries
+have been consumed. Existing static mocks and rule matching keep their behavior when no
+sequence is configured. See [the sequence contract](README.md#response-sequences) for examples.
+
+Inspect cursors with `GET /__admin/sequence-state?path=...`; reset one with `PATCH` and
+`{"position": 0}`. Add `rule=<zero-based-index>` to select a rule cursor. Both clients provide
+`get_sequence_state()` and `reset_sequence()`. Full mock replacement starts fresh; unrelated
+partial updates keep cursor positions. Requests already assigned a response keep it across
+reset, reconfiguration or deletion.
+
+Snapshot format 2 remains a separate preparation step. For now, exporting any configured
+sequence returns `409`; format 1 imports with sequences return `422` without changing storage.
+Use the configuration API to create sequences during this stage. Ordinary format 1 snapshots
+remain supported. Do not add sequence fields to format 1: older readers can silently drop them.
+
 ## Released 2.13 compatibility reference
 
 The following sections describe published 2.13 only. They do not describe this checkout.
@@ -253,6 +270,6 @@ mocks now; their configured response already remains available until the mock is
 removed. For cached upstream responses, stay on 2.x until record & replay is available, then
 explicitly record a response as a mock and replay it. There is no record & replay API in published 2.13 or this checkout yet.
 
-Record & replay and ordered response sequences are required for 3.0. Their concrete API,
-sequence exhaustion/reset behaviour and examples will be documented with implementation.
+Record & replay remains required for 3.0. Ordered response sequences are implemented in this
+checkout as documented above; their snapshot support awaits format 2.
 gRPC and an authentication token are outside the 3.0 scope.

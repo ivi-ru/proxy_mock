@@ -1,6 +1,7 @@
 """Administrative API helpers shared without importing server dependencies."""
 
 import re
+from urllib.parse import urlencode
 
 MIGRATION_URL = "https://github.com/ivi-ru/proxy_mock/blob/main/MIGRATING.md"
 DEFAULT_ADMIN_PREFIX = "/__admin"
@@ -28,3 +29,12 @@ def normalize_mock_path(path: str) -> str:
 
 def service_endpoint(endpoint: str, prefix: str | None) -> str:
     return validate_admin_prefix(prefix) + endpoint
+
+
+def sequence_query(path: str, rule_index: int | None = None) -> str:
+    query = {"path": normalize_mock_path(path)}
+    if rule_index is not None:
+        if isinstance(rule_index, bool) or not isinstance(rule_index, int) or rule_index < 0:
+            raise ValueError("rule_index must be a non-negative integer")
+        query["rule"] = rule_index
+    return urlencode(query)

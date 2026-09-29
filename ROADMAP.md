@@ -164,6 +164,7 @@ justifies changing it.
 | `/__admin/traffic` | `GET`, `DELETE` | Read with filters, or clear all traffic without filters |
 | `/__admin/settings` | `GET`, `PATCH` | Read or partially update recording settings |
 | `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export, replace, or merge a format 1 snapshot |
+| `/__admin/sequence-state?path=<encoded-path>` | `GET`, `PATCH` | Inspect or restart a mock/rule sequence cursor |
 | `/__admin/cache` | `DELETE` | Clear the deprecated cache while its removal remains pending |
 
 A mock's query parameter is part of its resource URI. `PUT` creates with `201` or replaces with
@@ -175,7 +176,7 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: response sequences, record & replay, snapshot evolution,
+The following steps are still pending: record & replay, snapshot evolution,
 cache removal, client transport unification, the installation split, and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
@@ -194,9 +195,15 @@ response use case of the removed cache.
 
 ### Response sequences
 
-Required for 3.0: configure an ordered sequence of responses for a single path, such as A on
-the first call and B on the second. Build on the existing rule engine and document sequence
-exhaustion and reset behaviour without introducing a scenario engine.
+Implemented locally: a mock or rule can serve an ordered response list. The default exhaustion
+policy is `repeat_last`; `error` returns `409`. Cursors are reserved atomically before delays,
+inspected with `GET /__admin/sequence-state`, and restarted with `PATCH {"position": 0}`.
+Mock replacement restarts cursors; unrelated partial updates preserve them. Matching and rule
+priority stay unchanged. This remains a response list rather than a scenario engine.
+
+Sequence snapshots await the separately planned format 2 work. Until then, sequence export is
+rejected explicitly, and ordinary format 1 snapshots remain supported. See the complete
+[sequence contract](README.md#response-sequences).
 
 ### Synchronous client transport
 

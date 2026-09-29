@@ -63,6 +63,7 @@ class ProxyMockApp(FastAPI):
         self.state.cache = TTLCache()
         self.state.traffic_store = TrafficStore()
         self.state.admin_lock = asyncio.Lock()
+        self.state.sequences = {}
         # Settings belong to the instance and may change without a restart.
         self.state.record_unknown_traffic = record_unknown_traffic_default()
         # Filled in by the CLI when it is given --mocks; applied during startup.
@@ -96,7 +97,9 @@ class AdminDispatch:
                 if message["type"] == "http.response.start":
                     headers = list(message.get("headers", []))
                     headers.append((b"cache-control", b"no-store"))
-                    if path in {self.prefix + suffix for suffix in ("/mocks", "/settings", "/snapshot")}:
+                    if path in {
+                        self.prefix + suffix for suffix in ("/mocks", "/settings", "/snapshot", "/sequence-state")
+                    }:
                         headers.append((b"accept-patch", b"application/json, application/octet-stream"))
                     message = {**message, "headers": headers}
                 elif head and message["type"] == "http.response.body":

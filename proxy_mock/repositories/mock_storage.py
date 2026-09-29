@@ -30,6 +30,7 @@ class MockStorage:
         timeout: float,
         rules: list[dict],
         cache_time: int,
+        sequence: dict | None = None,
     ) -> dict:
         normalized_path = _normalize_path(path)
 
@@ -41,6 +42,7 @@ class MockStorage:
             timeout=timeout,
             rules=rules,
             cache_time=cache_time,
+            sequence=sequence,
         ).model_dump()
         payload["path"] = normalized_path
 

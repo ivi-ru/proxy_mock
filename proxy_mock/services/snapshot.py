@@ -32,6 +32,13 @@ class SnapshotError(Exception):
         self.code = code
 
 
+def has_sequences(mock: dict) -> bool:
+    rules = mock.get("rules")
+    return mock.get("sequence") is not None or (
+        isinstance(rules, list) and any(isinstance(rule, dict) and rule.get("sequence") is not None for rule in rules)
+    )
+
+
 def _encode_section(section: Any) -> Any:
     """Replace a bytes body with its base64 form, leaving everything else untouched."""
     if not isinstance(section, dict) or not isinstance(section.get("body"), bytes):
@@ -69,6 +76,7 @@ def _map_rules(rules: Any, convert) -> Any:
             mapped.append(rule)
             continue
         converted = dict(rule)
+        converted.pop("sequence", None)
         for key in RULE_SECTIONS:
             if key in converted:
                 converted[key] = convert(converted[key])
@@ -78,6 +86,7 @@ def _map_rules(rules: Any, convert) -> Any:
 
 def _convert_mock(mock: dict, convert) -> dict:
     result = dict(mock)
+    result.pop("sequence", None)
     for key in BODY_SECTIONS:
         if key in result:
             result[key] = convert(result[key])
@@ -89,6 +98,8 @@ def _convert_mock(mock: dict, convert) -> dict:
 async def export_snapshot(version: str) -> dict:
     """Build a snapshot of every configured mock."""
     storage = await mock_storage.get_storage()
+    if any(has_sequences(mock) for mock in storage.values()):
+        raise SnapshotError("Snapshot format 1 cannot represent response sequences; format 2 support is pending", 409)
     return {
         "format": SNAPSHOT_FORMAT,
         "protocol": SNAPSHOT_PROTOCOL,
@@ -119,6 +130,8 @@ def parse_snapshot(snapshot: Any) -> list[dict]:
             raise SnapshotError(f"Mock #{index} must be a JSON object")
         if not mock.get("path"):
             raise SnapshotError(f"Mock #{index} has no 'path'")
+        if has_sequences(mock):
+            raise SnapshotError("Response sequences are not supported by snapshot format 1")
 
     return [_convert_mock(mock, _decode_section) for mock in mocks]
 

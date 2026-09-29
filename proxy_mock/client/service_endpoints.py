@@ -11,3 +11,4 @@ class Endpoints(StrEnum):
     TRAFFIC_SETTINGS = "/settings"
     STORAGE = "/mocks"
     STORAGE_SNAPSHOT = "/snapshot"
+    SEQUENCE_STATE = "/sequence-state"

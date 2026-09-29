@@ -1,7 +1,8 @@
 import time
 from http import HTTPMethod
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from proxy_mock.core.urls import proxy_hostname
 
@@ -14,6 +15,12 @@ class MockDataSchema(BaseModel):
     @field_serializer("headers")
     def serialize_headers(self, headers: dict) -> dict:
         return {str(key): str(value) for key, value in headers.items()} if headers else {}
+
+
+class SequenceSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    responses: list[MockDataSchema] = Field(min_length=1)
+    on_exhaustion: Literal["repeat_last", "error"] = "repeat_last"
 
 
 class RulesInputDataSchema(BaseModel):
@@ -45,6 +52,7 @@ class MockRulesSchema(BaseModel):
     extra_info: dict | None = Field(None)
     priority: int = Field(0)
     timestamp: float = Field(default_factory=lambda: time.time())
+    sequence: SequenceSchema | None = None
 
 
 class MockPathSchema(BaseModel):
@@ -55,6 +63,7 @@ class MockPathSchema(BaseModel):
     timeout: float | None = Field(None)
     rules: list[MockRulesSchema] | None = Field(None)
     cache_time: int | None = Field(None)
+    sequence: SequenceSchema | None = None
 
 
 class ConfigureMockRequestSchema(MockPathSchema):

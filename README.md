@@ -64,6 +64,7 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 - **Request proxying** to an upstream host (`proxy_host`)
 - **Endpoint mocking** with flexible response configuration
 - **Rules** for returning different responses on the same path
+- **Response sequences** for ordered replies on a mock or a matching rule (unreleased 3.0)
 - **Response delay** (`timeout`)
 - **Traffic capture** of incoming requests for later inspection
 - **Bounded in-memory traffic storage** (the last 1000 records by default)
@@ -248,7 +249,10 @@ to merge mocks by their path. Merge replaces each included mock in full and leav
 untouched; it is not JSON Merge Patch. Both accept the exported document. Invalid snapshots
 are rejected before storage changes.
 
-The document still uses format 1 in this development step:
+The document still uses format 1 in this development step. Storage containing response
+sequences cannot be exported until format 2 is implemented; see [the transition note](#response-sequences).
+
+The format 1 document looks like this:
 
 ```json
 {
@@ -315,6 +319,8 @@ such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mo
 | `GET` | `/__admin/snapshot` | Export the format 1 snapshot document | `200` |
 | `PUT` | `/__admin/snapshot` | Replace all mocks from a snapshot | `200` |
 | `PATCH` | `/__admin/snapshot` | Merge a snapshot by mock path | `200` |
+| `GET` | `/__admin/sequence-state?path=%2Finventory` | Inspect a sequence cursor; optional zero-based `rule` index | `200` |
+| `PATCH` | `/__admin/sequence-state?path=%2Finventory` | Restart that sequence with `{"position": 0}` | `200` |
 | `DELETE` | `/__admin/cache` | Clear the deprecated response cache, pending its removal | `200` |
 
 The query is part of a resource URI: `/__admin/mocks?path=%2Finventory` identifies the mock whose
@@ -355,6 +361,7 @@ replaced in full: `{"rules": []}` removes all rules. Null is invalid for non-nul
 | `extra_info` | `dict` | Arbitrary metadata (ends up in traffic) |
 | `proxy_host` | `string` (**absolute URL**) | Proxy the request to this host |
 | `timeout` | `float` | Delay before responding, seconds |
+| `sequence` | `object \| null` | Ordered response definition; see below |
 | `cache_time` | `int` | Deprecated response cache lifetime, seconds; removal remains planned |
 | `rules` | `list[dict]` | Rules producing different responses on one path |
 
@@ -417,6 +424,80 @@ Send this representation to `PUT /__admin/mocks?path=%2Ftest%2Fendpoint`.
 }
 ```
 
+## Response sequences
+
+Available in this unreleased checkout. Set `sequence` on a mock or on an individual rule:
+
+```python
+proxy_mock.configure_mock(
+    path="/inventory",
+    sequence={
+        "responses": [
+            {"status_code": 503, "body": {"retry": True}},
+            {"status_code": 200, "body": {"available": 3}},
+        ],
+        "on_exhaustion": "repeat_last",
+    },
+)
+assert proxy_mock.execute_request("GET", "/inventory").status_code == 503
+assert proxy_mock.execute_request("GET", "/inventory").status_code == 200
+assert proxy_mock.execute_request("GET", "/inventory").status_code == 200
+assert proxy_mock.get_sequence_state("/inventory")["data"]["position"] == 2
+proxy_mock.reset_sequence("/inventory")
+assert proxy_mock.execute_request("GET", "/inventory").status_code == 503
+```
+
+Both clients support `sequence=...`, `get_sequence_state(path, rule_index=None)` and
+`reset_sequence(path, rule_index=None)`. A sequence requires at least one response. Each response
+has its own `body`, `status_code` and `headers`, with the same types/defaults as a static mock.
+Binary bodies are supported by the clients through msgpack.
+
+`on_exhaustion` defaults to `repeat_last`: after consuming the list, all further calls repeat
+its final response. With `error`, further matching requests return `409` and
+`{"error": {"code": "sequence_exhausted", "message": "Response sequence exhausted"}}`.
+An exhausted matching rule does not fall through to another rule or the default response.
+
+Rules are still selected by their existing conditions and priority. Set the same `sequence`
+object directly on a rule to give that rule its own cursor. If no rule matches, a mock-level
+sequence supplies the default response. Otherwise the static `mock_data` is used. The optional
+`rule` query parameter is the rule's zero-based index in the configured list, before sorting by
+priority. Each rule cursor is independent of the default cursor and of the other rules.
+
+State is a separate REST resource:
+
+```sh
+curl 'http://localhost:5000/__admin/sequence-state?path=%2Finventory'
+curl -X PATCH 'http://localhost:5000/__admin/sequence-state?path=%2Finventory' \
+  -H 'Content-Type: application/json' -d '{"position":0}'
+```
+
+State contains `position` (number of reserved entries, capped at the list length), `length`,
+`exhausted` and `on_exhaustion`. `GET`, administrative `HEAD`, and mock inspection do not consume
+responses. `PATCH` accepts only an integer `position: 0`; it resets the selected cursor. A mock
+without a sequence, an absent mock or an absent rule sequence returns `404`.
+
+Positions are reserved atomically before configured delays. Concurrent calls cannot reserve
+the same entry before exhaustion, but response completion order may differ. The cursor is
+shared across all methods, query strings and path-parameter values matching that mock or rule.
+Requests rejected by the mock's method filter, and rules that do not match, do not advance it.
+Every matching method, including a user mock's `HEAD`, consumes an entry. Cancellation after
+reservation also consumes it.
+
+Full mock replacement (`PUT`) starts every cursor from zero. A mock `PATCH` preserves cursors
+unless it explicitly supplies `sequence` or `rules`: replacing `sequence` restarts the default
+cursor; replacing `rules` restarts rule cursors. `sequence: null` disables that sequence, and
+`rules: []` removes rule sequences. Deleting/clearing mocks removes their cursor state. A reset
+or replacement affects future reservations; requests already assigned a response retain it.
+
+Sequences cannot be combined with response caching or mock-level `proxy_host`, because those
+would bypass the ordered replies. A rule cannot combine its own sequence with its own
+`input_data.proxy_host`. These combinations return `422` before any configuration is changed.
+
+**Snapshot transition:** format 1 cannot safely describe this feature to older readers. Until
+the separately planned format 2 work, exporting storage containing any sequence returns `409`,
+and importing a format 1 document containing sequences returns `422`. Ordinary format 1
+snapshots still work. This prevents silent sequence loss; no cursor is serialized.
+
 ## Catching requests on `/<path>`
 
 For any path that has a mock configured, the server processes the request in this order:
@@ -425,7 +506,8 @@ For any path that has a mock configured, the server processes the request in thi
 2. Checks the method, otherwise `405 Method Not Allowed`.
 3. Returns a cached response when `cache_time` is set and there is a cache hit.
 4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
-5. Otherwise applies `timeout`, then `rules`, then the default `mock_data`.
+5. Otherwise selects the first matching rule, or the default response. If it has a sequence, reserves its next entry before waiting.
+6. Applies `timeout` (and any matching rule delay), then serves the selected rule response, default sequence entry, or static `mock_data`. Exhausted `error` sequences return `409` immediately.
 
 If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /__admin/settings`.
 

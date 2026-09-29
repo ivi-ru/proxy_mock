@@ -2,7 +2,7 @@ Version 3.0.0 (unreleased)
 ==========================
 
 Local preparation is in progress. Package version metadata has not yet been bumped; the
-remaining 3.0 roadmap items are not included in this step.
+remaining 3.0 roadmap items are still pending.
 
 * **Breaking: administrative REST API.** The configurable administrative namespace defaults
   to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are
@@ -22,6 +22,16 @@ remaining 3.0 roadmap items are not included in this step.
   available through `DELETE /__admin/cache` until the separate cache-removal step.
 * Updated the HTTP reference and migration guide, keeping the released 2.13 alias behavior
   separate from the unreleased contract.
+
+* Added ordered response sequences to mocks and rules. Each entry has its own response body,
+  status and headers. Exhaustion repeats the final response by default; the `error` policy
+  returns `409`. Reservations are atomic and happen before delays.
+* Added `GET` and `PATCH /__admin/sequence-state` and matching sync/async client helpers to
+  inspect and restart a cursor. Unrelated PATCH updates preserve positions; explicit sequence
+  or rule replacement restarts the corresponding cursors. Full mock replacement resets all.
+* Sequence configuration rejects incompatible caching/proxy settings. During the snapshot
+  transition, exporting sequences returns `409` and format 1 imports containing them return
+  `422`, preventing silent loss until format 2 support is implemented.
 
 Version 2.13.0
 ==============

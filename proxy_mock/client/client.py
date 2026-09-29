@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 import msgpack
 
-from proxy_mock.client.migration import MIGRATION_URL, normalize_mock_path
+from proxy_mock.client.migration import MIGRATION_URL, normalize_mock_path, sequence_query
 from proxy_mock.client.route import Route
 from proxy_mock.client.service_endpoints import Endpoints
 
@@ -41,6 +41,7 @@ class ProxyMock(Route):
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
         cache_time: int | None = None,
+        sequence: dict | None = None,
         include_none: bool = False,
         **kwargs,
     ) -> dict:
@@ -73,6 +74,9 @@ class ProxyMock(Route):
             )
             request_data["cache_time"] = cache_time
 
+        if sequence is not _UNSET and (include_none or sequence is not None):
+            request_data["sequence"] = sequence
+
         request_data.update(kwargs)
         return request_data
 
@@ -97,6 +101,7 @@ class ProxyMock(Route):
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
         cache_time: int | None = None,
+        sequence: dict | None = None,
         **kwargs,
     ):
         payload = self._build_mock_request_data(
@@ -110,6 +115,7 @@ class ProxyMock(Route):
             rules=rules,
             methods=methods,
             cache_time=cache_time,
+            sequence=sequence,
             **kwargs,
         )
         return self._send_configure(HTTPMethod.PUT, payload)
@@ -126,6 +132,7 @@ class ProxyMock(Route):
         rules: list[dict] | None = _UNSET,
         methods: list[str] | None = _UNSET,
         cache_time: int | None = _UNSET,
+        sequence: dict | None = _UNSET,
         **kwargs,
     ):
         payload = self._build_mock_request_data(
@@ -139,6 +146,7 @@ class ProxyMock(Route):
             rules=rules,
             methods=methods,
             cache_time=cache_time,
+            sequence=sequence,
             include_none=True,
             **kwargs,
         )
@@ -211,6 +219,18 @@ class ProxyMock(Route):
             self._service_endpoint(Endpoints.TRAFFIC_SETTINGS),
             json=_build_traffic_settings_payload(record_unknown_traffic, max_items),
         )
+
+    def get_sequence_state(self, path: str, rule_index: int | None = None) -> dict:
+        """Read the cursor of a mock sequence, or a rule by its zero-based configuration index."""
+        query = sequence_query(path, rule_index)
+        route = f"{self._service_endpoint(Endpoints.SEQUENCE_STATE)}?{query}"
+        return super().execute_request_and_get_response_body(HTTPMethod.GET, route)
+
+    def reset_sequence(self, path: str, rule_index: int | None = None) -> dict:
+        """Restart a sequence through a partial update of its state resource."""
+        query = sequence_query(path, rule_index)
+        route = f"{self._service_endpoint(Endpoints.SEQUENCE_STATE)}?{query}"
+        return super().execute_request_and_get_response_body(HTTPMethod.PATCH, route, json={"position": 0})
 
     def clean_cache(self):
         """Deprecated: response caching and this endpoint are removed in 3.0."""

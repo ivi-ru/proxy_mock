@@ -12,7 +12,14 @@ from pydantic import ValidationError
 
 from proxy_mock.api.errors import api_error
 from proxy_mock.api.openapi import body_documentation, inline_schema, mock_documentation, snapshot_documentation
-from proxy_mock.api.schemas import DataResponse, ErrorResponse, MockResource, MockResponse, SuccessResponse
+from proxy_mock.api.schemas import (
+    DataResponse,
+    ErrorResponse,
+    MockResource,
+    MockResponse,
+    SequenceStatePatch,
+    SuccessResponse,
+)
 from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.domain.constants import ParseError
@@ -30,7 +37,7 @@ from proxy_mock.services.mock_service import (
 from proxy_mock.services.request_parser import parse_configure
 from proxy_mock.services.snapshot import SnapshotError, export_snapshot, import_snapshot
 
-router = APIRouter(responses={code: {"model": ErrorResponse} for code in (400, 404, 405, 415, 422)})
+router = APIRouter(responses={code: {"model": ErrorResponse} for code in (400, 404, 405, 409, 415, 422)})
 PATH_QUERY = Query(None, description="Mock identity. Omit only to read or delete the entire collection.")
 
 
@@ -142,7 +149,12 @@ async def patch_mock(request: Request, path: str = Query(..., min_length=1)):
         if "mock_data" in changes and not isinstance(changes["mock_data"], dict):
             raise api_error(422, "invalid_mock", "mock_data must be an object")
         value = validate_mock(request, merged)
-        result = await mock_initialization(request.app.state.mock_app, value)
+        preserve = set()
+        if "sequence" not in changes:
+            preserve.add(None)
+        if "rules" not in changes:
+            preserve.update(range(len(value.get("rules") or [])))
+        result = await mock_initialization(request.app.state.mock_app, value, preserve_sequences=preserve)
     return JSONResponse(result)
 
 
@@ -219,8 +231,44 @@ async def patch_settings(request: Request):
 @router.get("/snapshot")
 async def get_snapshot(request: Request):
     check_query(request, set())
+    try:
+        async with request.app.state.admin_lock:
+            return JSONResponse(await export_snapshot(request.app.state.version))
+    except SnapshotError as err:
+        raise api_error(err.code, "unsupported_snapshot", str(err.detail)) from err
+
+
+async def sequence_state(request: Request, path: str, rule: int | None, *, reset: bool = False) -> dict:
+    check_query(request, {"path", "rule"})
+    identity = selected_path(path, required=True)
     async with request.app.state.admin_lock:
-        return JSONResponse(await export_snapshot(request.app.state.version))
+        sequence = request.app.state.sequences.get(identity, {}).get(rule)
+        if sequence is None:
+            raise api_error(404, "sequence_not_found", "No response sequence found for this mock or rule")
+        return {"success": True, "data": await sequence.state(reset=reset)}
+
+
+@router.get("/sequence-state", response_model=DataResponse)
+async def get_sequence_state(
+    request: Request, path: str = Query(..., min_length=1), rule: int | None = Query(None, ge=0)
+):
+    return await sequence_state(request, path, rule)
+
+
+@router.patch(
+    "/sequence-state",
+    response_model=DataResponse,
+    openapi_extra=body_documentation(inline_schema(SequenceStatePatch), "Set position to zero to restart a sequence."),
+)
+async def patch_sequence_state(
+    request: Request, path: str = Query(..., min_length=1), rule: int | None = Query(None, ge=0)
+):
+    data = await payload(request)
+    try:
+        SequenceStatePatch.model_validate(data)
+    except ValidationError as err:
+        raise api_error(422, "invalid_sequence_state", "Position must be zero", json.loads(err.json())) from err
+    return await sequence_state(request, path, rule, reset=True)
 
 
 @router.put("/snapshot", response_model=DataResponse, openapi_extra=snapshot_documentation())

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -18,6 +19,7 @@ from proxy_mock.services.proxy_service import (
 )
 from proxy_mock.services.response_factory import make_response
 from proxy_mock.services.rule_engine import apply_rules
+from proxy_mock.services.sequences import ResponseSequence, SequenceExhausted
 from proxy_mock.services.traffic_service import new_traffic_data
 
 LOG_MODE = os.getenv("PROXY_MOCK_LOG_REQUESTS", "full").lower()
@@ -62,7 +64,9 @@ def log_request(func):
     return wrapper
 
 
-def apply_mocks_factory(app: FastAPI, mock_data: dict):
+def apply_mocks_factory(app: FastAPI, mock_data: dict, sequences: dict[int | None, ResponseSequence] | None = None):
+    sequences = sequences or {}
+
     async def apply_mocks(request: Request):
         logger = app.logger
         http_client = app.state.http_client
@@ -115,27 +119,28 @@ def apply_mocks_factory(app: FastAPI, mock_data: dict):
 
             return response
 
-        # timeout
-        if timeout := mock_data.get("timeout"):
+        timeout = mock_data.get("timeout") or 0
+        try:
+            if rules := mock_data.get("rules"):
+                rule_response = await apply_rules(app, request, rules, sequences=sequences, delay=timeout)
+                if rule_response is not None:
+                    if cache_time and cache_key:
+                        await cache_response(app, cache_key, rule_response, cache_time)
+                    return rule_response
+            response_data = await sequences[None].take() if None in sequences else mock_data["mock_data"]
+        except SequenceExhausted as err:
+            return JSONResponse({"error": {"code": "sequence_exhausted", "message": str(err)}}, 409)
+
+        if timeout:
             logger.info(f"Request {request.url.path} has a configured delay: {timeout}s")
-            import asyncio
-
             await asyncio.sleep(timeout)
-
-        # rules
-        if rules := mock_data.get("rules"):
-            rule_response = await apply_rules(app, request, rules)
-            if rule_response is not None:
-                if cache_time and cache_key:
-                    await cache_response(app, cache_key, rule_response, cache_time)
-                return rule_response
 
         # default mock response
         logger.debug(
             f"Returning the response for mock '{request.url.path}': "
-            f"{json.dumps(convert_bytes_to_str(mock_data['mock_data']), ensure_ascii=False)}"
+            f"{json.dumps(convert_bytes_to_str(response_data), ensure_ascii=False)}"
         )
-        response = make_response(mock_data["mock_data"])
+        response = make_response(response_data)
 
         if cache_time and cache_key:
             await cache_response(app, cache_key, response, cache_time)
