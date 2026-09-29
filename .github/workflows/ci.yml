@@ -115,7 +115,7 @@ jobs:
         run: |
           docker run -d --rm --name proxy_mock -p 5000:5000 proxy_mock
           for _ in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:5000/proxy_mock > /dev/null; then
+            if curl -sf http://127.0.0.1:5000/__admin > /dev/null; then
               docker stop proxy_mock
               exit 0
             fi

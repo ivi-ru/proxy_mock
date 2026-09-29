@@ -125,9 +125,9 @@ other caller-visible behaviour. This part moves to 3.0 under the public API cont
 
 ---
 
-## 2.13 — migration preparation
+## 2.13 — migration preparation (released)
 
-The final planned feature release before 3.0 keeps 2.x behaviour and prepares consumers:
+The final planned feature release before 3.0 kept 2.x behaviour and prepared consumers:
 
 - Mark every legacy administrative operation with migration headers and bounded log warnings.
 - Offer opt-in resource paths through `PROXY_MOCK_ADMIN_PREFIX`, with explicit client support.
@@ -150,21 +150,34 @@ error responses. This includes mock configuration and storage, traffic, settings
 and service information. The same contract applies to the new 3.0 features. Moving the old
 action-style endpoints behind a prefix alone does not satisfy this requirement.
 
-Today that isolation depends on how FastAPI nests routers added through `include_router` — see
-the docstring in `tests/test_service_routes.py` — which is why `fastapi>=0.137` is pinned as a
-lower bound. It also means configuring a mock for `/proxy_mock` currently returns `success: true`
-and then never serves that mock. After the move the isolation is ours, and the FastAPI floor can
-be lowered again.
+The administrative API is implemented locally as the first 3.0 preparation step. The release
+is still incomplete, and package version metadata remains `2.13.0` until final validation.
+The namespace also contains Swagger UI, ReDoc and OpenAPI. Former service paths become ordinary
+mock paths. The FastAPI lower bound remains unchanged until a separate compatibility check
+justifies changing it.
 
-| 2.x | 3.0 |
-|-----|-----|
-| `GET /proxy_mock` | `GET /__admin` |
-| `POST /configure_mock`, `PATCH /configure_mock` | `POST /__admin/mocks`, `PATCH /__admin/mocks` |
-| `GET /storage`, `DELETE /storage`, `POST /storage/clean` | `GET /__admin/mocks`, `DELETE /__admin/mocks` |
-| `GET /traffic`, `DELETE /traffic`, `POST /traffic/clean` | `GET /__admin/traffic`, `DELETE /__admin/traffic` |
-| `GET /traffic/settings`, `PATCH /traffic/settings`, `POST /traffic/settings` | `GET /__admin/settings`, `PATCH /__admin/settings` |
-| `GET` / `POST /storage/snapshot` | `GET` / `POST /__admin/snapshot` |
-| `POST /cache/clean` | removed with the cache |
+| Resource | Methods | Contract |
+|----------|---------|----------|
+| `/__admin` | `GET` | Instance summary |
+| `/__admin/mocks` | `GET`, `DELETE` | Read or clear the collection |
+| `/__admin/mocks?path=<encoded-path>` | `GET`, `PUT`, `PATCH`, `DELETE` | Read, create/replace, partially update, or delete one mock |
+| `/__admin/traffic` | `GET`, `DELETE` | Read with filters, or clear all traffic without filters |
+| `/__admin/settings` | `GET`, `PATCH` | Read or partially update recording settings |
+| `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export, replace, or merge a format 1 snapshot |
+| `/__admin/cache` | `DELETE` | Clear the deprecated cache while its removal remains pending |
+
+A mock's query parameter is part of its resource URI. `PUT` creates with `201` or replaces with
+`200`; `PATCH` requires an existing mock and preserves omitted fields. Missing item reads,
+updates and deletes return `404`. Nullable values can be cleared with explicit `null`, and
+arrays are replaced as a whole. Snapshot merge replaces complete mocks by path; it is a
+resource-specific patch format, not JSON Merge Patch. Administrative errors use the common
+`success: false` / `error: {code, message, details?}` shape. No action-style `POST` aliases remain.
+See [README.md](README.md#administrative-rest-resources) for the current contract and
+[MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
+
+The following steps are still pending: response sequences, record & replay, snapshot evolution,
+cache removal, client transport unification, the installation split, and final release checks.
+Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
 

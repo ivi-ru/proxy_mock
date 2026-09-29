@@ -1,3 +1,7 @@
+> This checkout uses the unreleased administrative REST API. Build the image from this checkout;
+> published 2.x images do not implement this contract. The Compose file builds `proxy-mock:local`
+> by default.
+
 # Mock an HTTP dependency between containers
 
 This example runs a tiny storefront in one container and proxy-mock in
@@ -42,19 +46,13 @@ Only loopback ports are published on the host. Set `APP_PORT` or `PROXY_MOCK_POR
 Compose if the default host ports are occupied.
 
 After the check, you can inspect the configured response and recorded requests in
-`http://127.0.0.1:15000/docs` before running cleanup. The check resets this dedicated instance's
+`http://127.0.0.1:15000/__admin/docs` before running cleanup. The check resets this dedicated instance's
 mocks and traffic each time it runs, so it is safe to repeat.
 
-## Use the published image
+## Use an image built from this checkout
 
-If you have access to the GHCR package, use the published release instead of building it:
-
-```bash
-export PROXY_MOCK_IMAGE=ghcr.io/ivi-ru/proxy_mock:2.12.0
-docker compose up -d --wait proxy-mock app
-docker compose run --rm check
-docker compose down --remove-orphans
-```
+Set `PROXY_MOCK_IMAGE` to the tag of an image built from this source tree. Published 2.x images
+use the old administrative API and cannot run this checkout's check script.
 
 CI overrides `PROXY_MOCK_IMAGE` with the image built from the current checkout and runs the same
 start, check, and cleanup commands.

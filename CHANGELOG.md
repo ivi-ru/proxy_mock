@@ -1,3 +1,28 @@
+Version 3.0.0 (unreleased)
+==========================
+
+Local preparation is in progress. Package version metadata has not yet been bumped; the
+remaining 3.0 roadmap items are not included in this step.
+
+* **Breaking: administrative REST API.** The configurable administrative namespace defaults
+  to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are
+  removed; their former paths are available to user mocks. The whole namespace is protected
+  from mock shadowing.
+* Individual mocks use `/__admin/mocks?path=<encoded-path>`. `PUT` creates (`201`) or replaces
+  (`200`); `PATCH` updates an existing mock (`200`) and preserves omitted fields. Explicit null
+  clears nullable fields, nested response properties merge, and arrays replace in full.
+  Missing item reads, patches and deletes return `404`. Administrative errors share
+  `{"success": false, "error": {"code": "...", "message": "...", "details": ...}}`, with
+  optional details.
+* Snapshots retain format 1: `GET /__admin/snapshot` exports, `PUT` replaces and `PATCH` merges
+  complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
+  use `GET` and `PATCH /__admin/settings`. Invalid traffic filters return `422`.
+* The Python clients and pytest fixtures use the administrative API. Client transports and
+  package installation remain unchanged at this stage. Deprecated response caching remains
+  available through `DELETE /__admin/cache` until the separate cache-removal step.
+* Updated the HTTP reference and migration guide, keeping the released 2.13 alias behavior
+  separate from the unreleased contract.
+
 Version 2.13.0
 ==============
 

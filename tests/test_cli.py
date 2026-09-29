@@ -26,7 +26,7 @@ def _wait_until_ready(url: str, process: subprocess.Popen) -> None:
         if process.poll() is not None:
             raise RuntimeError(f"proxy-mock exited with code {process.returncode}")
         try:
-            if requests.get(f"{url}/proxy_mock", timeout=1).status_code == 200:
+            if requests.get(f"{url}/__admin", timeout=1).status_code == 200:
                 return
         except requests.RequestException:
             time.sleep(0.1)
@@ -113,7 +113,7 @@ class TestServeWithPreloadedMocks:
             _wait_until_ready(url, process)
 
             assert requests.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
-            assert requests.get(f"{url}/storage", timeout=5).json()["data"]["/preloaded"]
+            assert requests.get(f"{url}/__admin/mocks", timeout=5).json()["data"]["/preloaded"]
         finally:
             process.terminate()
             process.wait(timeout=10)

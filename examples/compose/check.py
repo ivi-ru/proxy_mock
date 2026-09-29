@@ -16,11 +16,11 @@ def request(url, method="GET", body=None):
 
 
 def main():
-    request(f"{MOCK_URL}/storage", method="DELETE")
-    request(f"{MOCK_URL}/traffic", method="DELETE")
+    request(f"{MOCK_URL}/__admin/mocks", method="DELETE")
+    request(f"{MOCK_URL}/__admin/traffic", method="DELETE")
     configured = request(
-        f"{MOCK_URL}/configure_mock",
-        method="POST",
+        f"{MOCK_URL}/__admin/mocks?path=%2Finventory%2Fsku-42",
+        method="PUT",
         body={"path": "/inventory/sku-42", "methods": ["GET"], "mock_data": {"body": {"available": 3}}},
     )
     assert configured["success"]
@@ -28,7 +28,7 @@ def main():
     product = request(f"{APP_URL}/products/sku-42")
     assert product == {"sku": "sku-42", "in_stock": True}, product
 
-    traffic = request(f"{MOCK_URL}/traffic?path=%2Finventory%2Fsku-42&method=GET")
+    traffic = request(f"{MOCK_URL}/__admin/traffic?path=%2Finventory%2Fsku-42&method=GET")
     assert traffic["count"] == 1, traffic
     assert traffic["data"][0]["request_path"] == "/inventory/sku-42"
     assert traffic["data"][0]["request_method"] == "GET"

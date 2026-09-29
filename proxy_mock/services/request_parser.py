@@ -11,13 +11,13 @@ async def parse_configure(request: Request) -> dict:
     if not input_data:
         raise ParseError("No request data", 400)
 
-    content_type = request.headers.get("content-type")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
 
     match content_type:
         case ConfigureContentTypes.JSON:
             try:
                 return json.loads(input_data)
-            except json.JSONDecodeError as err:
+            except (json.JSONDecodeError, UnicodeDecodeError) as err:
                 raise ParseError(f"Parse error: {err}", 400)
         case ConfigureContentTypes.BINARY:
             try:

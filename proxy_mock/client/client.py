@@ -5,11 +5,12 @@ from urllib.parse import urlencode
 
 import msgpack
 
-from proxy_mock.client.migration import MIGRATION_URL
+from proxy_mock.client.migration import MIGRATION_URL, normalize_mock_path
 from proxy_mock.client.route import Route
 from proxy_mock.client.service_endpoints import Endpoints
 
 CONFIGURE_CONTENT_TYPE = "application/octet-stream"
+_UNSET = object()
 
 
 def _build_traffic_settings_payload(record_unknown_traffic: bool | None, max_items: int | None) -> dict:
@@ -31,7 +32,7 @@ class ProxyMock(Route):
     def _build_mock_request_data(
         self,
         path: str,
-        body: Any = None,
+        body: Any = _UNSET,
         headers: dict | None = None,
         status_code: int | None = None,
         extra_info: dict | None = None,
@@ -40,31 +41,31 @@ class ProxyMock(Route):
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
         cache_time: int | None = None,
-        include_body_if_none: bool = True,
+        include_none: bool = False,
         **kwargs,
     ) -> dict:
         mock_data = {}
-        if include_body_if_none or body is not None:
+        if body is not _UNSET:
             mock_data["body"] = body
-        if status_code is not None:
+        if status_code is not _UNSET and (include_none or status_code is not None):
             mock_data["status_code"] = status_code
-        if headers is not None:
+        if headers is not _UNSET and (include_none or headers is not None):
             mock_data["headers"] = headers
 
-        request_data = {"path": path}
-        if methods is not None:
+        request_data = {"path": normalize_mock_path(path)}
+        if methods is not _UNSET and (include_none or methods is not None):
             request_data["methods"] = methods
         if mock_data:
             request_data["mock_data"] = mock_data
-        if extra_info is not None:
+        if extra_info is not _UNSET and (include_none or extra_info is not None):
             request_data["extra_info"] = extra_info
-        if proxy_host is not None:
+        if proxy_host is not _UNSET and (include_none or proxy_host is not None):
             request_data["proxy_host"] = proxy_host
-        if timeout is not None:
+        if timeout is not _UNSET and (include_none or timeout is not None):
             request_data["timeout"] = timeout
-        if rules is not None:
+        if rules is not _UNSET and (include_none or rules is not None):
             request_data["rules"] = rules
-        if cache_time is not None:
+        if cache_time is not _UNSET and (include_none or cache_time is not None):
             warnings.warn(
                 f"cache_time is deprecated and will be removed in 3.0; see {MIGRATION_URL}",
                 DeprecationWarning,
@@ -76,9 +77,10 @@ class ProxyMock(Route):
         return request_data
 
     def _send_configure(self, method: HTTPMethod, payload: dict):
+        query = urlencode({"path": payload["path"]})
         return super().execute_request_and_get_response_body(
             method=method,
-            route=self._service_endpoint(Endpoints.CONFIGURE_MOCK),
+            route=f"{self._service_endpoint(Endpoints.CONFIGURE_MOCK)}?{query}",
             data=msgpack.packb(payload),
             headers={"Content-Type": CONFIGURE_CONTENT_TYPE},
         )
@@ -108,23 +110,22 @@ class ProxyMock(Route):
             rules=rules,
             methods=methods,
             cache_time=cache_time,
-            include_body_if_none=True,  # for configure the body may explicitly be None
             **kwargs,
         )
-        return self._send_configure(HTTPMethod.POST, payload)
+        return self._send_configure(HTTPMethod.PUT, payload)
 
     def patch_mock(
         self,
         path: str,
-        body: Any = None,
-        headers: dict | None = None,
-        status_code: int | None = None,
-        extra_info: dict | None = None,
-        proxy_host: str | None = None,
-        timeout: float | None = None,
-        rules: list[dict] | None = None,
-        methods: list[str] | None = None,
-        cache_time: int | None = None,
+        body: Any = _UNSET,
+        headers: dict | None = _UNSET,
+        status_code: int | None = _UNSET,
+        extra_info: dict | None = _UNSET,
+        proxy_host: str | None = _UNSET,
+        timeout: float | None = _UNSET,
+        rules: list[dict] | None = _UNSET,
+        methods: list[str] | None = _UNSET,
+        cache_time: int | None = _UNSET,
         **kwargs,
     ):
         payload = self._build_mock_request_data(
@@ -138,7 +139,7 @@ class ProxyMock(Route):
             rules=rules,
             methods=methods,
             cache_time=cache_time,
-            include_body_if_none=False,  # for patch we do not send a body unless one is given
+            include_none=True,
             **kwargs,
         )
         return self._send_configure(HTTPMethod.PATCH, payload)
@@ -153,24 +154,22 @@ class ProxyMock(Route):
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def get_storage(self, path: str | None = None):
-        query_params = {**({"path": path} if path else {})}
+        query_params = {"path": normalize_mock_path(path)} if path is not None else {}
         full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode(query_params)}"
         return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
     def clean_storage(self, path: str | None = None):
         """Delete mocks: all of them, or the one at `path`.
 
-        Passing a path is deprecated — use `delete_mock()`, which reports a missing mock with a
-        `404` instead of `success: false`.
+        Passing a path is deprecated — use `delete_mock()`. Both report a missing mock with `404`.
         """
-        if path:
+        if path is not None:
             warnings.warn(
                 "clean_storage(path=...) is deprecated and will be removed in 3.0; use delete_mock(path)",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            full_path = f"{self._service_endpoint(Endpoints.STORAGE_CLEAN)}?{urlencode({'path': path})}"
-            return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
+            return self.delete_mock(path)
 
         return super().execute_request_and_get_response_body(
             HTTPMethod.DELETE, self._service_endpoint(Endpoints.STORAGE)
@@ -184,11 +183,16 @@ class ProxyMock(Route):
 
     def import_mocks(self, snapshot: dict, mode: str = "merge"):
         """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
-        full_path = f"{self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)}?{urlencode({'mode': mode})}"
-        return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
+        if mode not in {"merge", "replace"}:
+            raise ValueError("mode must be 'merge' or 'replace'")
+        method = HTTPMethod.PATCH if mode == "merge" else HTTPMethod.PUT
+        return super().execute_request_and_get_response_body(
+            method, self._service_endpoint(Endpoints.STORAGE_SNAPSHOT), json=snapshot
+        )
 
     def delete_mock(self, path: str):
-        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode({'path': path})}"
+        query = urlencode({"path": normalize_mock_path(path)})
+        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{query}"
         return super().execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
 
     def clean_traffic(self):
@@ -216,5 +220,5 @@ class ProxyMock(Route):
             stacklevel=2,
         )
         return super().execute_request_and_get_response_body(
-            HTTPMethod.POST, self._service_endpoint(Endpoints.CACHE_CLEAN)
+            HTTPMethod.DELETE, self._service_endpoint(Endpoints.CACHE_CLEAN)
         )

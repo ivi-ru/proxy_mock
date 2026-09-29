@@ -1,7 +1,9 @@
 import copy
 
 from fastapi import FastAPI
+from starlette.routing import compile_path
 
+from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.core.deprecation import warn_deprecated_field
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.repositories.mock_storage import mock_storage
@@ -15,6 +17,16 @@ def normalize_path(path: str) -> str:
     if path != "/" and path.endswith("/"):
         path = path.rstrip("/")
     return path
+
+
+def validate_mock_path(app: FastAPI, path: str) -> str:
+    """Validate before changing storage or routes, including during snapshot import."""
+    normalized = normalize_mock_path(path)
+    prefix = app.state.admin_prefix
+    if normalized == prefix or normalized.startswith(prefix + "/"):
+        raise ValueError(f"Mock path is inside the reserved administrative namespace: {prefix}")
+    compile_path(normalized)
+    return normalized
 
 
 def _route_candidates(path: str) -> set[str]:
@@ -58,20 +70,6 @@ async def delete_mock_data(path: str) -> bool:
     return await mock_storage.delete_mock_data(path)
 
 
-async def patch_mock_data(old: dict, new: dict) -> dict:
-    old_rules = old.get("rules") or []
-    new_rules = new.get("rules") or []
-    merged_rules = [item for item in new_rules if item not in old_rules] + old_rules
-
-    old.update(new)
-    old["rules"] = merged_rules
-    old["path"] = normalize_path(old["path"])
-
-    saved = await mock_storage.set_mock_data(**old)
-    old.update(saved)
-    return old
-
-
 async def count_mocks() -> int:
     return await mock_storage.count()
 
@@ -85,6 +83,7 @@ async def return_storage() -> dict:
 
 
 async def mock_initialization(app: FastAPI, mock_data: dict):
+    mock_data["path"] = validate_mock_path(app, mock_data["path"])
     if mock_data.get("cache_time"):
         warn_deprecated_field("cache_time", "response caching is removed in 3.0")
 

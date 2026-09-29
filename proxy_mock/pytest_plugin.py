@@ -76,7 +76,7 @@ def proxy_mock(proxy_mock_url: str):
     """
     from proxy_mock.client import ProxyMock
 
-    client = ProxyMock(proxy_mock_url)
+    client = ProxyMock(proxy_mock_url, admin_prefix=os.getenv("PROXY_MOCK_ADMIN_PREFIX"))
     try:
         yield client
     finally:

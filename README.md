@@ -10,16 +10,19 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 [Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-> **Preparing for 3.0:** 2.13 preserves the 2.x API and adds migration warnings and opt-in
-> administrative aliases. Pin `proxy_mock>=2.13,<3` to retain compatibility while upgrading.
-> See [Migrating from 2.x to 3.0](MIGRATING.md) for routes, client transport and installation.
+> **3.0 development, not a release:** this checkout implements the new administrative REST API.
+> Its package version remains `2.13.0` until release preparation is complete. The HTTP reference
+> below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
+> Pin `proxy_mock>=2.13,<3` for the published compatible release. See
+> [Migrating from 2.x to 3.0](MIGRATING.md) for the HTTP changes and work still planned.
 
 ## Quick start
 
-With Python 3.11 or newer, install the package and test dependencies in a virtual environment:
+With Python 3.11 or newer, install the published 2.x package and test dependencies in a virtual
+environment. The Python example also works with this development checkout:
 
 ```bash
-python -m pip install 'proxy_mock>=2.11,<3' pytest requests
+python -m pip install 'proxy_mock>=2.13,<3' pytest requests
 ```
 
 Save this complete test as `test_http_dependency.py`:
@@ -66,7 +69,7 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 - **Bounded in-memory traffic storage** (the last 1000 records by default)
 - **JSON snapshots** of the whole storage: export, load back, or preload at startup
 - **One command to start** (`proxy-mock`) and **pytest fixtures** that ship with the package
-- **Response caching** (`cache_time`) — deprecated, removed in 3.0
+- **Response caching** (`cache_time`) — deprecated; still present during development, with removal planned for 3.0
 
 ---
 
@@ -74,18 +77,21 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 
 The tool is meant for a **trusted, isolated test environment** and is not designed to be exposed publicly. Before deploying it, keep in mind:
 
-- **No authentication.** The service endpoints (`/configure_mock`, `/storage*`, `/traffic*`, `/cache/clean`) are open to anyone with network access. Anybody can create, read and delete mocks and traffic.
+- **No authentication.** The administrative endpoints under `/__admin` (or the configured prefix) are open to anyone with network access. Anybody can create, read and delete mocks and traffic.
 - **SSRF via `proxy_host`.** By default a request can be proxied to **any** host, including your internal network and the cloud metadata address (`169.254.169.254`). The host list can be restricted with `PROXY_MOCK_ALLOWED_PROXY_HOSTS` (disabled by default, meaning any host is allowed).
-- **Traffic holds sensitive data.** `/traffic` stores the full headers and bodies of incoming requests (including `Authorization` and `Cookie`), and they can be read without authorisation. Requests that matched no mock (the `404` responses) are recorded as well.
+- **Traffic holds sensitive data.** `/__admin/traffic` stores the full headers and bodies of incoming requests (including `Authorization` and `Cookie`), and they can be read without authorisation. Requests that matched no mock (the `404` responses) are recorded as well.
 - **Loop protection.** Proxying "to self" is detected through the `x-proxy-mock-chain` marker header and is aborted with `508 Loop Detected`.
 
 **Recommendation:** run it inside a closed network perimeter only, never expose it to the internet, and narrow proxying with the allowlist where possible.
 
 ---
 
-## ⬆️ Migrating from 1.0.1
+## ⬆️ Historical migration from 1.0.1 to 2.x
 
-The previously published 1.0.1 ran on Flask. The current 2.x line runs on FastAPI, and four
+This section describes the released 2.x API. For this checkout, also apply
+[the 3.0 HTTP migration](MIGRATING.md#administrative-rest-api-in-this-checkout).
+
+The previously published 1.0.1 ran on Flask. The 2.x line runs on FastAPI, and four
 changes break compatibility. What to fix in a project upgrading from 1.0.1:
 
 | In 1.0.1 | In 2.x |
@@ -221,11 +227,12 @@ using the `proxy_mock` fixture, which resets state between tests.
 
 #### Snapshots of the storage
 
-The whole storage can be exported as one JSON document, kept next to the tests, and loaded back:
+The whole storage can be exported as one JSON document, kept next to the tests, and loaded back.
+The HTTP example below targets this development checkout:
 
 ```bash
-curl http://localhost:5000/storage/snapshot > mocks.json   # export
-proxy-mock --port 5000 --mocks mocks.json                  # start with them preloaded
+curl http://localhost:5000/__admin/snapshot > mocks.json  # export from this checkout
+proxy-mock --port 5000 --mocks mocks.json                 # start with them preloaded
 ```
 
 The same from Python:
@@ -236,7 +243,12 @@ proxy_mock.import_mocks(snapshot)  # merge into what is already configured
 proxy_mock.import_mocks(snapshot, mode="replace")  # or replace the storage
 ```
 
-The document carries its own format version, so snapshots stay readable across releases:
+For HTTP import, use `PUT /__admin/snapshot` to replace storage or `PATCH /__admin/snapshot`
+to merge mocks by their path. Merge replaces each included mock in full and leaves other paths
+untouched; it is not JSON Merge Patch. Both accept the exported document. Invalid snapshots
+are rejected before storage changes.
+
+The document still uses format 1 in this development step:
 
 ```json
 {
@@ -260,12 +272,12 @@ Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `PROXY_MOCK_ADMIN_PREFIX` | unset (aliases disabled in 2.13); e.g. `/__admin` | Opt-in administrative resource paths; old paths keep working. See [migration guide](MIGRATING.md) |
+| `PROXY_MOCK_ADMIN_PREFIX` | absolute path, default `/__admin` | Administrative namespace, including docs and OpenAPI. Legacy routes are removed in this checkout. The prefix cannot be empty. See [migration guide](MIGRATING.md) |
 | `PROXY_MOCK_LOG_REQUESTS` | `full` (default), `minimal`, `off` | Logging level for incoming requests |
-| `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `PATCH /traffic/settings` |
+| `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `PATCH /__admin/settings` |
 | `PROXY_MOCK_PROXY_TIMEOUT` | float, seconds (default `30`) | Timeout for outgoing proxied requests |
 | `PROXY_MOCK_ALLOWED_PROXY_HOSTS` | comma-separated host list (default: empty) | Allowlist of proxy targets. Empty means any host is allowed |
-| `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC` | `true` (default), `false` (`1/0`, `yes/no`, `on/off`) | Whether to record requests that matched no mock (the `404` response). Toggleable at runtime via `PATCH /traffic/settings` |
+| `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC` | `true` (default), `false` (`1/0`, `yes/no`, `on/off`) | Whether to record requests that matched no mock (the `404` response). Toggleable at runtime via `PATCH /__admin/settings` |
 | `PROXY_MOCK_URL` | URL (default: empty) | Read by the pytest fixtures: when set, they use that instance instead of starting one |
 
 ---
@@ -274,54 +286,68 @@ Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_
 
 Full request and response schemas are available in the auto-generated documentation while the service is running:
 
-- **Swagger UI** — `http://localhost:5000/docs`
-- **ReDoc** — `http://localhost:5000/redoc`
-- **OpenAPI JSON** — `http://localhost:5000/openapi.json`
+- **Swagger UI** — `http://localhost:5000/__admin/docs`
+- **ReDoc** — `http://localhost:5000/__admin/redoc`
+- **OpenAPI JSON** — `http://localhost:5000/__admin/openapi.json`
 
 A short reference and the key examples follow.
 
-## Service endpoints
+## Administrative REST resources
 
-| Method | URL | Purpose | Success response |
-|--------|-----|---------|------------------|
-| `GET` | `/proxy_mock` | Server availability and an instance summary | `200` — `{"success": true, "version": "...", "python_version": "...", "mocks_count": N, "traffic_count": N, "traffic_max_items": N}` |
-| `POST` | `/configure_mock` | Create a mock | `201` — `{"success": true, "path": "...", "data": {...}}` |
-| `PATCH` | `/configure_mock` | Amend an existing mock (it must already exist) | `200` — same shape as POST |
-| `GET` | `/storage` | List mocks. Query: `path` filters by path | `200` — `{"success": true, "data": {...}}` |
-| `DELETE` | `/storage` | Delete mocks. Query: `path` for one mock; without `path` all of them | `200` — `{"success": true, "data": {...}}`; `404` if the given mock does not exist |
-| `GET` | `/storage/snapshot` | Export every mock as a snapshot document | `200` — the snapshot itself (see "Snapshots of the storage") |
-| `POST` | `/storage/snapshot` | Load a snapshot. Query: `mode=merge` (default) or `mode=replace` | `200` — `{"success": true, "data": {"imported": N, "mode": "...", "paths": [...]}}`; `400` on malformed JSON or an unknown mode, `422` on an invalid snapshot |
-| `GET` | `/traffic` | Show captured traffic. Query: `path`, `method`, `limit` | `200` — `{"success": true, "count": N, "data": [...]}` |
-| `DELETE` | `/traffic` | Clear the traffic store | `200` — `{"success": true, "data": []}` |
-| `GET` | `/traffic/settings` | Current traffic recording settings | `200` — `{"success": true, "data": {"record_unknown_traffic": true, "max_items": 1000}}` |
-| `PATCH` | `/traffic/settings` | Change traffic settings. Body: `{"record_unknown_traffic": bool}` and/or `{"max_items": int > 0}`; the update is partial | `200` — same shape as GET; `400` on malformed JSON, `422` on an invalid or empty body |
+These routes describe the unreleased checkout. Replace `/__admin` with
+`PROXY_MOCK_ADMIN_PREFIX` when configured. The entire namespace is reserved: user mocks cannot
+shadow administrative routes, documentation, or unknown paths inside it. Former service paths
+such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mocks.
 
-**All legacy administrative paths move in 3.0.** In 2.13 they keep their response bodies and
-status codes and return a `Deprecation` date header and a migration `Link`. The following
-action-style operations also have replacements already available in 2.x. See
-[the migration guide](MIGRATING.md) for opt-in `/__admin` aliases:
+| Method | Resource URI | Purpose | Success status |
+|--------|--------------|---------|----------------|
+| `GET` | `/__admin` | Server availability and instance summary | `200` |
+| `GET` | `/__admin/mocks` | List all mocks | `200` |
+| `DELETE` | `/__admin/mocks` | Delete all mocks | `200` |
+| `GET` | `/__admin/mocks?path=%2Finventory` | Read one mock | `200` |
+| `PUT` | `/__admin/mocks?path=%2Finventory` | Create or fully replace one mock | `201` when created; `200` when replaced |
+| `PATCH` | `/__admin/mocks?path=%2Finventory` | Partially update an existing mock | `200` |
+| `DELETE` | `/__admin/mocks?path=%2Finventory` | Delete one mock | `200` |
+| `GET` | `/__admin/traffic` | Read traffic; optional `path`, `method`, `limit` filters | `200` |
+| `DELETE` | `/__admin/traffic` | Clear all traffic; no query parameters | `200` |
+| `GET` | `/__admin/settings` | Read traffic recording settings | `200` |
+| `PATCH` | `/__admin/settings` | Partially update `record_unknown_traffic` and/or `max_items` | `200` |
+| `GET` | `/__admin/snapshot` | Export the format 1 snapshot document | `200` |
+| `PUT` | `/__admin/snapshot` | Replace all mocks from a snapshot | `200` |
+| `PATCH` | `/__admin/snapshot` | Merge a snapshot by mock path | `200` |
+| `DELETE` | `/__admin/cache` | Clear the deprecated response cache, pending its removal | `200` |
 
-| Method | URL | Replacement |
-|--------|-----|-------------|
-| `POST` | `/storage/clean` | `DELETE /storage` |
-| `POST` | `/traffic/clean` | `DELETE /traffic` |
-| `POST` | `/traffic/settings` | `PATCH /traffic/settings` |
-| `POST` | `/cache/clean` | none — response caching goes away with it |
-| `*` | `/<any path>` | Catch-all: returns a mock, proxies, or `404` | depends on the configuration (see below) |
+The query is part of a resource URI: `/__admin/mocks?path=%2Finventory` identifies the mock whose
+request path is `/inventory`. URL-encode the path rather than inserting it into administrative
+path segments. `PUT` is idempotent and replaces the whole configuration; omitted properties
+return to defaults. `PATCH` preserves omitted properties. Neither operation uses `POST`.
+An absent query selects the collection for `GET` and `DELETE`; an empty `path` is invalid.
+`PUT` and `PATCH` require `path` in the query. A body `path`, if present, must match it.
 
-**`/configure_mock` errors:**
+Success responses retain the `success` envelope and operation-specific data, except snapshot
+export, which returns the snapshot document itself. Administrative errors share one shape:
 
-- `400` — empty body or malformed JSON/msgpack: `{"success": false, "error": "..."}`
-- `415` — unsupported `Content-Type` (`application/json` or `application/octet-stream` is required)
-- `422` — the body failed validation (for example the required `path` is missing): `{"success": false, "error": [...]}`
+```json
+{"success": false, "error": {"code": "mock_not_found", "message": "No mock found for /inventory"}}
+```
 
-## `/configure_mock` body
+The message is descriptive; error responses may also include `error.details`. Missing mocks
+return `404` for item `GET`, `PATCH` and `DELETE`. Invalid fields, empty paths and invalid
+traffic filters return `422`; malformed request bodies return `400`; unsupported body media
+types return `415`. An unsupported administrative method returns `405`. Legacy service routes
+and action-style `POST` aliases are no longer administrative operations.
 
-Content type: `application/json` or `application/octet-stream` (msgpack). The PATCH body is identical to POST.
+## Mock representation and partial updates
+
+Use `application/json` or `application/octet-stream` (msgpack) for mock `PUT` and `PATCH`.
+`PUT` supplies the complete representation. `PATCH` merges supplied `mock_data` properties
+with the current response; response bodies themselves are replaced, not recursively patched.
+Explicit `null` clears nullable fields such as `proxy_host` and `mock_data.body`. Arrays are
+replaced in full: `{"rules": []}` removes all rules. Null is invalid for non-nullable fields.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `path` (required) | `string` | Path the mock applies to |
+| `path` (optional) | `string` | Must match the required `path` query parameter |
 | `methods` | `list[string]` | HTTP methods (all by default) |
 | `mock_data.body` | `string \| dict \| list \| bytes \| null` | Response body |
 | `mock_data.status_code` | `int` | Response code (default `200`) |
@@ -329,8 +355,23 @@ Content type: `application/json` or `application/octet-stream` (msgpack). The PA
 | `extra_info` | `dict` | Arbitrary metadata (ends up in traffic) |
 | `proxy_host` | `string` (**absolute URL**) | Proxy the request to this host |
 | `timeout` | `float` | Delay before responding, seconds |
-| `cache_time` | `int` | Response cache lifetime, seconds. **Deprecated**, removed in 3.0 |
+| `cache_time` | `int` | Deprecated response cache lifetime, seconds; removal remains planned |
 | `rules` | `list[dict]` | Rules producing different responses on one path |
+
+For example, create a mock and then change only its status code:
+
+```sh
+curl -X PUT 'http://localhost:5000/__admin/mocks?path=%2Finventory' \
+  -H 'Content-Type: application/json' \
+  -d '{"mock_data":{"body":{"available":3},"status_code":200}}'
+curl -X PATCH 'http://localhost:5000/__admin/mocks?path=%2Finventory' \
+  -H 'Content-Type: application/json' \
+  -d '{"mock_data":{"status_code":503}}'
+```
+
+The second request keeps the existing body and headers. See
+[the migration guide](MIGRATING.md#administrative-rest-api-in-this-checkout) for additional
+before/after examples.
 
 Each entry in `rules`:
 
@@ -341,7 +382,9 @@ Each entry in `rules`:
 
 Rules are sorted by descending `priority`, then by insertion order; the first match wins.
 
-#### Example
+#### Full representation example
+
+Send this representation to `PUT /__admin/mocks?path=%2Ftest%2Fendpoint`.
 
 ```json
 {
@@ -384,7 +427,7 @@ For any path that has a mock configured, the server processes the request in thi
 4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
 5. Otherwise applies `timeout`, then `rules`, then the default `mock_data`.
 
-If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /traffic/settings`.
+If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /__admin/settings`.
 
 ---
 

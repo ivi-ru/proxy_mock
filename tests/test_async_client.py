@@ -71,7 +71,6 @@ class TestAsyncClient:
                     rules=[{"input_data": {"body": {"k": 1}}, "output_data": {"body": "r"}}],
                     methods=["GET", "POST"],
                     cache_time=5,
-                    custom_kwarg="y",
                 )
 
         assert run(scenario())["success"]
@@ -134,7 +133,7 @@ class TestAsyncClient:
 
         delete_response, storage = run(scenario())
         assert delete_response["success"]
-        assert not storage["data"]
+        assert storage["error"]["code"] == "mock_not_found"
 
 
 class TestAsyncErrors:

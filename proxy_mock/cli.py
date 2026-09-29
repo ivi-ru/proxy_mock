@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mocks",
         type=Path,
         metavar="FILE",
-        help="snapshot file (as produced by GET /storage/snapshot) to load at startup",
+        help="snapshot file (as produced by GET /__admin/snapshot) to load at startup",
     )
     parser.add_argument(
         "--workers",

@@ -12,9 +12,9 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-from proxy_mock.domain.models import ConfigureMockRequestSchema
+from proxy_mock.api.schemas import MockResource
 from proxy_mock.repositories.mock_storage import mock_storage
-from proxy_mock.services.mock_service import cleanup_storage, mock_initialization
+from proxy_mock.services.mock_service import cleanup_storage, mock_initialization, validate_mock_path
 
 SNAPSHOT_FORMAT = 1
 SNAPSHOT_PROTOCOL = "http"
@@ -136,13 +136,21 @@ async def import_snapshot(app: FastAPI, snapshot: Any, mode: str = "merge") -> d
     mocks = parse_snapshot(snapshot)
 
     validated = []
+    seen_paths = set()
     for index, mock in enumerate(mocks):
         try:
-            validated.append(ConfigureMockRequestSchema.model_validate(mock).model_dump())
+            value = MockResource.model_validate(mock).model_dump()
+            value["path"] = validate_mock_path(app, mock["path"])
+            if value["path"] in seen_paths:
+                raise ValueError("Duplicate normalized mock path in snapshot")
+            seen_paths.add(value["path"])
+            validated.append(value)
         except ValidationError as err:
             raise SnapshotError(
                 {"mock_index": index, "path": mock.get("path"), "errors": json.loads(err.json())}
             ) from err
+        except (ValueError, TypeError, AssertionError) as err:
+            raise SnapshotError({"mock_index": index, "path": mock.get("path"), "errors": str(err)}) from err
 
     if mode == "replace":
         await cleanup_storage(app)

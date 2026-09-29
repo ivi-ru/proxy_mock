@@ -31,9 +31,10 @@ The project uses uv; `make install` creates the environment.
   3.0 decision, not a pull request.
 - **One process, in-memory state.** Mocks and traffic live in the memory of a single process, so
   the service never runs with more than one worker. Do not "fix" that by adding shared storage.
-- **Service endpoints must not be shadowed by user mocks.** The isolation currently depends on
-  how FastAPI nests routers, which is why the floor is `fastapi>=0.137`; see the docstring in
-  `tests/test_service_routes.py` before touching routing or that lower bound.
+- **Service endpoints must not be shadowed by user mocks.** The entire administrative namespace
+  is dispatched before user routes, including wildcard mocks and unknown administrative paths.
+  Keep the regression coverage in `tests/test_service_routes.py`; the existing FastAPI lower
+  bound stays unchanged until it has been independently verified.
 - **Tests are required**: new behaviour gets a test, a bug fix gets a regression test that fails
   without it. Do not weaken or delete an existing test to make a change pass.
 - **User-visible changes get a CHANGELOG.md entry** under the upcoming version.
