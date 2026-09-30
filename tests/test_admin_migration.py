@@ -6,8 +6,8 @@ import threading
 import time
 import warnings
 
+import httpx2
 import pytest
-import requests
 import uvicorn
 
 from proxy_mock.app import create_app
@@ -41,7 +41,7 @@ def admin_server(monkeypatch, request):
             yield host, prefix
         finally:
             try:
-                requests.delete(host + prefix + "/mocks", timeout=5)
+                httpx2.delete(host + prefix + "/mocks", timeout=5)
             finally:
                 server.should_exit = True
                 thread.join(timeout=5)
@@ -62,12 +62,12 @@ def assert_error(response, status):
 def test_default_and_custom_prefixes_expose_resources(admin_server):
     host, prefix = admin_server
     for suffix in ("", "/mocks", "/traffic", "/settings", "/snapshot"):
-        response = requests.get(host + prefix + suffix, timeout=5)
+        response = httpx2.get(host + prefix + suffix, timeout=5)
         assert response.status_code == 200
         assert "Deprecation" not in response.headers
         assert "Sunset" not in response.headers
         assert 'rel="deprecation"' not in response.headers.get("Link", "")
-    assert requests.get(host + prefix, timeout=5).json()["version"]
+    assert httpx2.get(host + prefix, timeout=5).json()["version"]
 
 
 @pytest.mark.parametrize(
@@ -85,27 +85,27 @@ def test_invalid_prefix_is_rejected_by_server_and_clients(prefix, monkeypatch):
 def test_mock_resource_create_replace_read_and_delete(admin_server):
     host, prefix = admin_server
     url = host + prefix + "/mocks"
-    response = requests.put(url, params={"path": "example/"}, json={"mock_data": {"body": "first"}}, timeout=5)
+    response = httpx2.put(url, params={"path": "example/"}, json={"mock_data": {"body": "first"}}, timeout=5)
     assert response.status_code == 201
     assert response.json()["success"]
-    assert requests.get(host + "/example", timeout=5).text == "first"
-    response = requests.put(
+    assert httpx2.get(host + "/example", timeout=5).text == "first"
+    response = httpx2.put(
         url, params={"path": "/example"}, json={"path": "example/", "mock_data": {"body": "second"}}, timeout=5
     )
     assert response.status_code == 200
-    response = requests.get(url, params={"path": "/example"}, timeout=5)
+    response = httpx2.get(url, params={"path": "/example"}, timeout=5)
     assert response.status_code == 200
     assert response.json()["data"]["mock_data"]["body"] == "second"
-    assert list(requests.get(url, timeout=5).json()["data"]) == ["/example"]
-    assert requests.delete(url, params={"path": "/example"}, timeout=5).status_code == 200
-    assert_error(requests.get(url, params={"path": "/example"}, timeout=5), 404)
-    assert requests.get(host + "/example", timeout=5).status_code == 404
+    assert list(httpx2.get(url, timeout=5).json()["data"]) == ["/example"]
+    assert httpx2.delete(url, params={"path": "/example"}, timeout=5).status_code == 200
+    assert_error(httpx2.get(url, params={"path": "/example"}, timeout=5), 404)
+    assert httpx2.get(host + "/example", timeout=5).status_code == 404
 
 
 @pytest.mark.parametrize("method", ["GET", "PATCH", "DELETE"])
 def test_missing_mock_is_not_found(admin_server, method):
     host, prefix = admin_server
-    response = requests.request(method, host + prefix + "/mocks", params={"path": "/absent"}, json={}, timeout=5)
+    response = httpx2.request(method, host + prefix + "/mocks", params={"path": "/absent"}, json={}, timeout=5)
     assert_error(response, 404)
 
 
@@ -114,7 +114,7 @@ def test_empty_mock_path_is_invalid_and_never_clears_storage(admin_server, metho
     host, prefix = admin_server
     with ProxyMock(host, admin_prefix=prefix) as client:
         assert client.configure_mock(path="/kept", body="kept")["success"]
-        response = requests.request(method, host + prefix + "/mocks", params={"path": ""}, json={}, timeout=5)
+        response = httpx2.request(method, host + prefix + "/mocks", params={"path": ""}, json={}, timeout=5)
         assert_error(response, 422)
         assert client.execute_request("GET", "/kept").text == "kept"
         assert list(client.get_storage()["data"]) == ["/kept"]
@@ -126,8 +126,8 @@ def test_mutations_require_query_path_and_matching_body_path(admin_server, metho
     url = host + prefix + "/mocks"
     with ProxyMock(host, admin_prefix=prefix) as client:
         client.configure_mock(path="/kept", body="kept")
-        assert_error(requests.request(method, url, json={"path": "/kept"}, timeout=5), 422)
-        assert_error(requests.request(method, url, params={"path": "/kept"}, json={"path": "/other"}, timeout=5), 422)
+        assert_error(httpx2.request(method, url, json={"path": "/kept"}, timeout=5), 422)
+        assert_error(httpx2.request(method, url, params={"path": "/kept"}, json={"path": "/other"}, timeout=5), 422)
         assert client.execute_request("GET", "/kept").text == "kept"
         assert list(client.get_storage()["data"]) == ["/kept"]
 
@@ -141,18 +141,18 @@ def test_patch_retains_omitted_values_and_clears_explicit_nulls(admin_server):
         "timeout": 0.01,
         "proxy_host": "http://example.test",
     }
-    assert requests.put(url, params={"path": "/partial"}, json=original, timeout=5).status_code == 201
+    assert httpx2.put(url, params={"path": "/partial"}, json=original, timeout=5).status_code == 201
     patch = {"extra_info": None, "timeout": None, "proxy_host": None}
-    response = requests.patch(url, params={"path": "/partial"}, json=patch, timeout=5)
+    response = httpx2.patch(url, params={"path": "/partial"}, json=patch, timeout=5)
     assert response.status_code == 200
-    saved = requests.get(url, params={"path": "/partial"}, timeout=5).json()["data"]
+    saved = httpx2.get(url, params={"path": "/partial"}, timeout=5).json()["data"]
     assert saved["mock_data"] == original["mock_data"]
     for field in patch:
         assert saved[field] is None
-    assert requests.get(host + "/partial", timeout=5).text == "kept"
-    response = requests.patch(url, params={"path": "/partial"}, json={"mock_data": {"body": None}}, timeout=5)
+    assert httpx2.get(host + "/partial", timeout=5).text == "kept"
+    response = httpx2.patch(url, params={"path": "/partial"}, json={"mock_data": {"body": None}}, timeout=5)
     assert response.status_code == 200
-    response = requests.get(host + "/partial", timeout=5)
+    response = httpx2.get(host + "/partial", timeout=5)
     assert response.content == b""
     assert response.status_code == 202
     assert response.headers["X-Test"] == "kept"
@@ -165,11 +165,11 @@ def test_patch_rules_replace_the_list_and_empty_list_clears_it(admin_server):
     second = {"input_data": {"methods": ["POST"]}, "output_data": {"body": "second"}}
     with ProxyMock(host, admin_prefix=prefix) as client:
         client.configure_mock(path="/rules", body="fallback", rules=[first])
-        assert requests.patch(url, params={"path": "/rules"}, json={"rules": [second]}, timeout=5).status_code == 200
+        assert httpx2.patch(url, params={"path": "/rules"}, json={"rules": [second]}, timeout=5).status_code == 200
         assert len(client.get_storage("/rules")["data"]["rules"]) == 1
         assert client.execute_request("GET", "/rules").text == "fallback"
         assert client.execute_request("POST", "/rules").text == "second"
-        assert requests.patch(url, params={"path": "/rules"}, json={"rules": []}, timeout=5).status_code == 200
+        assert httpx2.patch(url, params={"path": "/rules"}, json={"rules": []}, timeout=5).status_code == 200
         assert client.get_storage("/rules")["data"]["rules"] == []
         assert client.execute_request("POST", "/rules").text == "fallback"
 
@@ -180,12 +180,12 @@ def test_snapshot_put_replaces_and_patch_merges(admin_server):
     snapshot = {"format": 1, "protocol": "http", "mocks": [{"path": "/loaded", "mock_data": {"body": "loaded"}}]}
     with ProxyMock(host, admin_prefix=prefix) as client:
         client.configure_mock(path="/existing", body="existing")
-        assert requests.patch(url, json=snapshot, timeout=5).status_code == 200
+        assert httpx2.patch(url, json=snapshot, timeout=5).status_code == 200
         assert sorted(client.get_storage()["data"]) == ["/existing", "/loaded"]
-        assert requests.put(url, json=snapshot, timeout=5).status_code == 200
+        assert httpx2.put(url, json=snapshot, timeout=5).status_code == 200
         assert list(client.get_storage()["data"]) == ["/loaded"]
         assert client.execute_request("GET", "/existing").status_code == 404
-        exported = requests.get(url, timeout=5).json()
+        exported = httpx2.get(url, timeout=5).json()
         assert exported["format"] == 2
         assert exported["mocks"][0]["path"] == "/loaded"
 
@@ -202,20 +202,20 @@ def test_snapshot_put_replaces_and_patch_merges(admin_server):
 )
 def test_admin_errors_have_a_consistent_envelope(admin_server, method, suffix, payload, content_type, status):
     host, prefix = admin_server
-    response = requests.request(
-        method, host + prefix + suffix, data=payload, headers={"Content-Type": content_type}, timeout=5
+    response = httpx2.request(
+        method, host + prefix + suffix, content=payload, headers={"Content-Type": content_type}, timeout=5
     )
     assert_error(response, status)
 
 
-def test_sync_client_uses_resources_and_preserves_response_type(admin_server):
+def test_sync_client_uses_resources_and_httpx_response_type(admin_server):
     host, prefix = admin_server
     with ProxyMock(host, admin_prefix=prefix) as client:
         assert client.get_proxy_mock()["success"]
         assert client.configure_mock(path="/binary", body=b"\x00\xff")["success"]
         response = client.execute_request("GET", "/binary")
-        assert isinstance(response, requests.Response)
-        assert response.ok and response.content == b"\x00\xff"
+        assert isinstance(response, httpx2.Response)
+        assert response.is_success and response.content == b"\x00\xff"
         assert client.get_storage("/binary")["success"]
         assert client.patch_mock("/binary", status_code=202)["success"]
         assert client.execute_request("GET", "/binary").content == b"\x00\xff"
@@ -266,18 +266,17 @@ def test_async_client_uses_resources(admin_server):
     asyncio.run(scenario())
 
 
-def test_python_transport_warnings_use_normal_filtering(client):
+def test_python_transport_migration_warning_is_removed(client):
     with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("default", DeprecationWarning)
-        for _ in range(3):
-            with ProxyMock(client.host):
-                pass
-    assert len([w for w in caught if "httpx2" in str(w.message)]) == 1
+        warnings.simplefilter("always", DeprecationWarning)
+        with ProxyMock(client.host) as migrated:
+            assert migrated.get_proxy_mock()["success"]
+    assert not caught
 
 
 def test_openapi_documents_resources_and_request_and_response_contracts(admin_server):
     host, prefix = admin_server
-    schema = requests.get(host + prefix + "/openapi.json", timeout=5).json()
+    schema = httpx2.get(host + prefix + "/openapi.json", timeout=5).json()
     paths = schema["paths"]
     expected = {
         "/mocks": {"get", "put", "patch", "delete"},
@@ -298,7 +297,7 @@ def test_openapi_documents_resources_and_request_and_response_contracts(admin_se
         assert "application/json" in operation["requestBody"]["content"]
         assert "422" in operation["responses"]
     for suffix in ("/docs", "/redoc"):
-        response = requests.get(host + prefix + suffix, timeout=5)
+        response = httpx2.get(host + prefix + suffix, timeout=5)
         assert response.status_code == 200
         assert prefix + "/openapi.json" in response.text
 
@@ -362,14 +361,17 @@ def test_delete_traffic_rejects_filters_without_losing_records(client):
 
 def test_invalid_utf8_is_a_client_error(client):
     response = client.execute_request(
-        "PUT", "/__admin/mocks?path=/invalid", data=b"\xff", headers={"Content-Type": "application/json"}
+        "PUT", "/__admin/mocks?path=/invalid", content=b"\xff", headers={"Content-Type": "application/json"}
     )
     assert_error(response, 400)
 
 
 def test_json_charset_parameter_is_supported(client):
     response = client.execute_request(
-        "PUT", "/__admin/mocks?path=/charset", data=b"{}", headers={"Content-Type": "application/json; charset=utf-8"}
+        "PUT",
+        "/__admin/mocks?path=/charset",
+        content=b"{}",
+        headers={"Content-Type": "application/json; charset=utf-8"},
     )
     assert response.status_code == 201
 

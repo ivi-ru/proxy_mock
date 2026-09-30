@@ -11,7 +11,7 @@ Requires Python 3.11 or newer. Save `test_http_dependency.py` in your working di
 these commands in a virtual environment:
 
 ```bash
-python -m pip install 'proxy_mock>=2.11,<3' pytest requests
+python -m pip install 'proxy_mock>=2.11,<3' pytest
 python -m pytest -q test_http_dependency.py
 ```
 

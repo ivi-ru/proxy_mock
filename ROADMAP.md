@@ -176,8 +176,7 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: client transport unification, the installation split,
-and final release checks.
+The following steps are still pending: the installation split and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
@@ -222,10 +221,11 @@ at zero; export leaves positions unchanged. Format 1 remains readable for ordina
 
 ### Synchronous client transport
 
-Both clients use `httpx2`, removing `requests` and the dependencies used only by it. The
-migration guide must cover the new response type, exception classes, request keyword arguments,
-redirect defaults, timeouts and session customisation. Existing `requests.Response` behaviour
-remains available throughout 2.x.
+Implemented locally: both clients use `httpx2`, removing `requests` and the dependencies
+used only by it. The [migration guide](MIGRATING.md#python-client-transport-in-this-checkout)
+covers native responses, shared exception classes, body encoding, redirect defaults, timeouts
+and native-client injection with explicit ownership. Existing `requests.Response` behaviour
+remains available in published 2.x.
 
 ### Install split
 

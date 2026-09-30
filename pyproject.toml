@@ -24,7 +24,6 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
 ]
 dependencies = [
-    "requests>=2.31.0,<3.0.0",
     "httpx2>=2.0.0,<3.0.0",
     "pydantic>=2.6.0,<3.0.0",
     "fastapi>=0.137.0",

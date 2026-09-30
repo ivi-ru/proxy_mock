@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 
+import httpx2
 import pytest
-import requests
 
 from proxy_mock.cli import SnapshotFileError, build_parser, main, read_snapshot
 
@@ -26,9 +26,9 @@ def _wait_until_ready(url: str, process: subprocess.Popen) -> None:
         if process.poll() is not None:
             raise RuntimeError(f"proxy-mock exited with code {process.returncode}")
         try:
-            if requests.get(f"{url}/__admin", timeout=1).status_code == 200:
+            if httpx2.get(f"{url}/__admin", timeout=1).status_code == 200:
                 return
-        except requests.RequestException:
+        except httpx2.RequestError:
             time.sleep(0.1)
     raise RuntimeError("proxy-mock did not become ready in time")
 
@@ -122,13 +122,13 @@ class TestServeWithPreloadedMocks:
         try:
             _wait_until_ready(url, process)
 
-            assert requests.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
-            assert requests.get(f"{url}/__admin/mocks", timeout=5).json()["data"]["/preloaded"]
+            assert httpx2.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
+            assert httpx2.get(f"{url}/__admin/mocks", timeout=5).json()["data"]["/preloaded"]
             if format == 2:
-                assert requests.get(f"{url}/ordered", timeout=5).content == b"\xff\x00"
-                assert requests.get(f"{url}/ordered", timeout=5).text == "second"
-                assert requests.get(f"{url}/recorded", timeout=5).content == b"\x00\xffsaved"
-                exported = requests.get(f"{url}/__admin/snapshot", timeout=5).json()
+                assert httpx2.get(f"{url}/ordered", timeout=5).content == b"\xff\x00"
+                assert httpx2.get(f"{url}/ordered", timeout=5).text == "second"
+                assert httpx2.get(f"{url}/recorded", timeout=5).content == b"\x00\xffsaved"
+                exported = httpx2.get(f"{url}/__admin/snapshot", timeout=5).json()
                 assert exported["format"] == 2
                 assert len(exported["mocks"][-1]["recordings"]) == 1
         finally:

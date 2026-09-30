@@ -30,7 +30,7 @@ class TestTraffic:
             assert req_param["request_path"] == configure_mock["path"]
 
     def test_send_binary_request(self, client: ProxyMock, configure_binary_mock):
-        client.execute_request(HTTPMethod.POST, configure_binary_mock["path"], data=BYTE_RESPONSE)
+        client.execute_request(HTTPMethod.POST, configure_binary_mock["path"], content=BYTE_RESPONSE)
 
         response = client.get_traffic()
 
@@ -130,7 +130,7 @@ class TestRecordUnknownTrafficSetting:
         response = client.execute_request(
             HTTPMethod.PATCH,
             "/__admin/settings",
-            data=b"{not json",
+            content=b"{not json",
             headers={"Content-Type": "application/json"},
         )
 

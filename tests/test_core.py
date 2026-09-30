@@ -55,19 +55,25 @@ class TestVersionDetection:
 class TestConfigureParsing:
     def test_empty_body_returns_400(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.PUT, "/__admin/mocks?path=/parse-test", data=b"", headers={"Content-Type": "application/json"}
+            HTTPMethod.PUT, "/__admin/mocks?path=/parse-test", content=b"", headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 400
 
     def test_bad_json_returns_400(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.PUT, "/__admin/mocks?path=/parse-test", data="{bad", headers={"Content-Type": "application/json"}
+            HTTPMethod.PUT,
+            "/__admin/mocks?path=/parse-test",
+            content="{bad",
+            headers={"Content-Type": "application/json"},
         )
         assert response.status_code == 400
 
     def test_unsupported_content_type_returns_415(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.PUT, "/__admin/mocks?path=/parse-test", data=b"whatever", headers={"Content-Type": "text/plain"}
+            HTTPMethod.PUT,
+            "/__admin/mocks?path=/parse-test",
+            content=b"whatever",
+            headers={"Content-Type": "text/plain"},
         )
         assert response.status_code == 415
 
@@ -77,7 +83,7 @@ class TestConfigureParsing:
             response = client.execute_request(
                 HTTPMethod.PUT,
                 "/__admin/mocks?path=/parse-test",
-                data=payload,
+                content=payload,
                 headers={"Content-Type": "application/octet-stream"},
             )
             assert response.status_code == 400

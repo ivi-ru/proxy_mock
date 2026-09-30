@@ -94,7 +94,7 @@ jobs:
       - name: Install the wheel into a clean environment
         run: |
           python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet dist/*.whl pytest requests
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet dist/*.whl pytest
 
       - name: Run the smoke test outside the repository
         run: |

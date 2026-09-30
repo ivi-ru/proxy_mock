@@ -20,7 +20,7 @@ def test_removed_cache_field_is_rejected_by_http_without_mutation(client, value,
     arguments = (
         {"json": payload}
         if encoding == "json"
-        else {"data": msgpack.packb(payload), "headers": {"Content-Type": "application/octet-stream"}}
+        else {"content": msgpack.packb(payload), "headers": {"Content-Type": "application/octet-stream"}}
     )
     response = client.execute_request(method, "/__admin/mocks?path=/unchanged", **arguments)
     assert response.status_code == 422

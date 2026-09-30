@@ -11,11 +11,20 @@ import sys
 from importlib.util import find_spec
 from pathlib import Path
 
-import requests
+import httpx2
 
 
 def test_removed_dependencies_are_not_installed():
-    for package in ("aiocache", "yarl", "multidict", "propcache"):
+    for package in (
+        "aiocache",
+        "yarl",
+        "multidict",
+        "propcache",
+        "requests",
+        "charset_normalizer",
+        "urllib3",
+        "certifi",
+    ):
         assert find_spec(package) is None, f"unexpected runtime dependency: {package}"
 
 
@@ -46,7 +55,7 @@ def test_shipped_fixtures_serve_a_mock(proxy_mock, proxy_mock_url):
     """Uses the fixtures from the pytest11 entry point, which only exist if the wheel ships them."""
     proxy_mock.configure_mock(path="/smoke", body={"installed": True})
 
-    response = requests.get(f"{proxy_mock_url}/smoke", timeout=5)
+    response = httpx2.get(f"{proxy_mock_url}/smoke", timeout=5)
 
     assert response.json() == {"installed": True}
 

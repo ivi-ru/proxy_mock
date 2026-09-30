@@ -71,7 +71,7 @@ def test_binary_response_and_duplicate_headers_round_trip(client, upstream):
     upstream.status = 201
     upstream.headers = [("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("Content-Type", "application/octet-stream")]
     configure(client, upstream)
-    first = client.execute_request("POST", "/recorded?x=1&x=2", data=b"\xff\x00")
+    first = client.execute_request("POST", "/recorded?x=1&x=2", content=b"\xff\x00")
     assert first.status_code == 201 and first.content == upstream.body
     assert first.headers["X-Proxy-Mock-Recording"] == "stored"
     entries = client.get_recordings("/recorded")["data"]
@@ -85,9 +85,9 @@ def test_binary_response_and_duplicate_headers_round_trip(client, upstream):
     replay(client)
     upstream.body = b"must not be fetched"
     for _ in range(2):
-        response = client.execute_request("POST", "/recorded?x=1&x=2", data=b"\xff\x00")
+        response = client.execute_request("POST", "/recorded?x=1&x=2", content=b"\xff\x00")
         assert response.status_code == 201 and response.content == first.content
-        assert response.raw.headers.getlist("Set-Cookie") == ["a=1", "b=2"]
+        assert response.headers.get_list("Set-Cookie") == ["a=1", "b=2"]
         assert "X-Proxy-Mock-Recording" not in response.headers
     assert len(upstream.calls) == 1
 
@@ -98,11 +98,11 @@ def test_http_responses_including_upstream_errors_are_recorded(client, upstream,
     upstream.body = b"" if status == 204 else b"upstream reply"
     upstream.headers = [("Location", "/other")] if status == 302 else []
     configure(client, upstream)
-    original = client.execute_request("GET", "/recorded", allow_redirects=False)
+    original = client.execute_request("GET", "/recorded", follow_redirects=False)
     assert original.status_code == status
     assert len(client.get_recordings("/recorded")["data"]) == 1
     replay(client)
-    response = client.execute_request("GET", "/recorded", allow_redirects=False)
+    response = client.execute_request("GET", "/recorded", follow_redirects=False)
     assert response.status_code == status and response.content == original.content
     assert response.headers.get("Location") == original.headers.get("Location")
     assert len(upstream.calls) == 1
@@ -127,11 +127,11 @@ def test_matching_uses_method_raw_path_query_bytes_and_selected_headers(client, 
     configure(client, upstream, path, match_headers=["X-Key", "x-key"])
     route = "/items/a%2Fb?x=1&x=2&space=a+b"
     headers = {"X-Key": "yes", "X-Ignored": "first"}
-    assert client.execute_request("POST", route, data=b'{"a":1}', headers=headers).status_code == 200
+    assert client.execute_request("POST", route, content=b'{"a":1}', headers=headers).status_code == 200
     assert upstream.calls == [("POST", route, b'{"a":1}')]
     replay(client, path, match_headers=["x-key"])
     assert (
-        client.execute_request("POST", route, data=b'{"a":1}', headers={**headers, "X-Ignored": "other"}).status_code
+        client.execute_request("POST", route, content=b'{"a":1}', headers={**headers, "X-Ignored": "other"}).status_code
         == 200
     )
     for method, url, body, selected in [
@@ -142,7 +142,7 @@ def test_matching_uses_method_raw_path_query_bytes_and_selected_headers(client, 
         ("POST", route, b'{"a": 1}', "yes"),
         ("POST", route, b'{"a":1}', "no"),
     ]:
-        response = client.execute_request(method, url, data=body, headers={"X-Key": selected})
+        response = client.execute_request(method, url, content=body, headers={"X-Key": selected})
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "recording_not_found"
     assert len(upstream.calls) == 1
@@ -176,7 +176,7 @@ def test_byte_budget_skips_oversize_and_applies_to_total_retained_data(client, u
     entries = client.get_recordings("/recorded")["data"]
     assert 0 < len(entries) < 4
     assert entries[-1]["request"]["query"] == "n=3"
-    response = client.execute_request("POST", "/recorded", data=b"x" * 2000)
+    response = client.execute_request("POST", "/recorded", content=b"x" * 2000)
     assert response.headers["X-Proxy-Mock-Recording"] == "too_large"
     assert client.get_recordings("/recorded")["data"] == entries
 
@@ -436,8 +436,8 @@ def test_header_octets_survive_transport_decoding(client, upstream):
     configure(client, upstream)
     first = client.execute_request("GET", "/recorded")
     assert first.status_code == 200
-    assert first.headers["X-Raw"] == raw_value
+    assert (b"x-raw", raw_value.encode("latin-1")) in first.headers.raw
     replay(client)
     response = client.execute_request("GET", "/recorded")
-    assert response.headers["X-Raw"] == raw_value
+    assert (b"x-raw", raw_value.encode("latin-1")) in response.headers.raw
     assert len(upstream.calls) == 1

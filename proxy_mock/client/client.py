@@ -82,7 +82,7 @@ class ProxyMock(Route):
         return super().execute_request_and_get_response_body(
             method=method,
             route=f"{self._service_endpoint(Endpoints.CONFIGURE_MOCK)}?{query}",
-            data=msgpack.packb(payload),
+            content=msgpack.packb(payload),
             headers={"Content-Type": CONFIGURE_CONTENT_TYPE},
         )
 

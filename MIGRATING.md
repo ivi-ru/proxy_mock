@@ -5,8 +5,8 @@ response sequences and record/replay; package version metadata remains `2.13.0` 
 release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Transport unification and the client/server
-installation split remain later steps. They are not implemented by this checkout.
+Both clients now use `httpx2` as described below. The client/server installation split
+remains a later step; this checkout still installs the server by default.
 
 ## Administrative REST API in this checkout
 
@@ -127,8 +127,8 @@ the new resource methods; `configure_mock()` uses PUT and `patch_mock()` uses PA
 administrative requests. Published 2.13 clients use a different HTTP contract even when their
 opt-in prefix is `/__admin`.
 
-The synchronous client still uses `requests`; changing transports and installation extras is
-separate work. Response caching is removed as described below.
+Both clients return `httpx2.Response`; migrate request arguments and response handling
+as described below. Response caching is removed. Installation extras remain separate work.
 
 ## Record/replay in this checkout
 
@@ -259,23 +259,97 @@ control repetition and visibility; use `python -W default::DeprecationWarning -m
 review them. Warnings do not change successful responses or retries. Projects treating warnings
 as errors should review these notices before enabling that policy for a dependency upgrade.
 
-## Remaining 3.0 work: synchronous client transport
+## Python client transport in this checkout
 
-In 2.13, `ProxyMock` still uses `requests.Session` and returns `requests.Response` from
-`execute_request()`. Async transport remains `httpx2`. In 3.0 both clients will use `httpx2`.
-Before migrating, audit code that relies on:
+Both `ProxyMock` and `AsyncProxyMock` now use `httpx2` and return its buffered `Response`
+from `execute_request()`. `requests`, `charset-normalizer`, `urllib3` and `certifi` are no
+longer installed by proxy-mock. Published 2.13 retains `requests.Session` and
+`requests.Response` for the synchronous client.
 
-- The concrete `requests.Response` type, `.ok`, response truth testing, or `isinstance` checks.
-  Prefer explicit `status_code` checks now, with the exact success range your test requires.
-- `requests` exceptions. The current sync transport wraps connection/timeouts in
-  `ProxyMockRequestError`; other transport exceptions can still come from `requests`.
-  The 3.0 exception contract must be documented and tested before release.
-- Request keyword arguments, body encoding, redirects, timeouts, streaming, cookies and
-  session customisation (including adapters and direct `.session` access). Do not assume
-  requests-specific arguments or defaults transfer unchanged to `httpx2`.
+### Response handling and request arguments
 
-Exact 3.0 transport defaults and exception mappings are not implemented in this checkout yet. They must be
-specified in this guide when 3.0 ships, with executable before/after examples.
+Replace `.ok` and response truth testing with an explicit status check. `httpx2.Response`
+is always truthy, including HTTP errors; `.is_success` is true only for 200–299. If your
+old `.ok` check accepted redirects, use `response.status_code < 400` instead.
+
+Before (published 2.x sync client):
+
+```python
+with ProxyMock(url) as client:
+    response = client.execute_request("POST", "/upload", data=b"raw", allow_redirects=False)
+    assert response.ok
+    cookies = response.raw.headers.getlist("Set-Cookie")
+```
+
+After (this checkout, sync client):
+
+```python
+with ProxyMock(url) as client:
+    response = client.execute_request("POST", "/upload", content=b"raw", follow_redirects=False)
+    assert response.is_success
+    cookies = response.headers.get_list("Set-Cookie")
+```
+
+The async client accepts the same arguments using `await`. Request options follow the
+native `httpx2` request API: `content=` sends raw bytes or text, `json=` serializes JSON,
+`data=` accepts a form mapping, and `files=` uploads multipart data. Raw text or bytes in
+`data=` raise `TypeError`. Replace `allow_redirects` with `follow_redirects`. `stream=` is
+unsupported: wrapper calls read the complete response. Use the native client's streaming
+API when needed. Use `response.headers.raw` for original header bytes; convenience header
+accessors may decode UTF-8 rather than Latin-1.
+
+JSON, forms and multipart encoding can differ from requests. Recording keys include exact
+request bytes: reuse explicit `content=` when byte identity matters, or capture a new
+recording after migrating the request encoding. Generic relative routes append to the
+wrapper host's base path, preserving encoded paths, raw query strings and trailing slashes;
+absolute request URLs override the host.
+
+### Defaults and exceptions
+
+Clients created by the wrapper do not follow redirects by default. Set `follow_redirects=True`
+per request to follow them. The constructor timeout defaults to 10 seconds for each connect,
+read, write and pool operation, not a total deadline. Pass a number, `httpx2.Timeout` or
+`None` (disable timeouts); a per-request `timeout=` overrides the constructor value.
+Native TLS verification and environment proxy settings remain enabled by default.
+
+HTTP errors return a response by default. `execute_request(..., raise_for_status=True)`
+raises `ProxyMockResponseError` for status codes >=400, or `AsyncProxyMockResponseError`
+for async calls; the exception exposes `.response`. Redirects do not raise through this
+flag. Calling the native `response.raise_for_status()` instead raises
+`httpx2.HTTPStatusError` for any non-2xx status, including redirects.
+
+All native `httpx2.RequestError` failures are wrapped in `ProxyMockRequestError` or
+`AsyncProxyMockRequestError`, with the original exception in `__cause__`. This includes
+connection, read/write, timeout, protocol, decoding and redirect-limit errors. Native
+`httpx2.InvalidURL` and argument errors such as `TypeError` propagate unchanged. All four
+wrapper exception classes are exported from `proxy_mock.client`; the async error classes
+also subclass the corresponding sync error classes, so shared callers can catch the common
+base classes. Their existing module import locations remain available.
+
+### Custom native clients and ownership
+
+Replace `.session` access and requests adapters with an `httpx2.Client` or `AsyncClient`.
+Pass it as `http_client=` to preserve configured headers, cookies, authentication, TLS,
+proxy, transport and event hooks. The wrapper exposes it through `.http_client` and always
+uses its own host for relative routes, regardless of the native client's `base_url`.
+
+```python
+import httpx2
+from proxy_mock.client import ProxyMock
+
+with httpx2.Client(headers={"X-Test": "yes"}, trust_env=False) as http:
+    with ProxyMock(url, http_client=http, timeout=5.0) as client:
+        response = client.execute_request("GET", "/item")
+        assert response.is_success
+    # The borrowed native client is still open here.
+```
+
+For async use, nest `async with httpx2.AsyncClient(...) as http` and
+`async with AsyncProxyMock(url, http_client=http) as client`. The injected client's
+`follow_redirects` default is honored, while the wrapper's constructor timeout applies
+unless overridden per request. A wrapper-created native client is closed by `close()` /
+`aclose()` or context exit, including exceptional exit. An injected client is borrowed:
+the caller closes it. Passing the wrong native client type raises `TypeError`.
 
 ## Remaining 3.0 work: installation and startup
 

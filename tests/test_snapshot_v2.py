@@ -56,7 +56,7 @@ def test_sequences_reset_cursors_and_all_binary_body_sections_round_trip(client)
         "/ordered", body=binary, rules=rules, sequence={"responses": [{"body": binary}, {"body": "second-default"}]}
     )
     assert client.execute_request("GET", "/ordered").content == binary
-    assert client.execute_request("POST", "/ordered", data=binary).content == binary
+    assert client.execute_request("POST", "/ordered", content=binary).content == binary
     snapshot = client.export_mocks()
     assert snapshot["format"] == 2
     mock = snapshot["mocks"][0]
@@ -78,9 +78,9 @@ def test_sequences_reset_cursors_and_all_binary_body_sections_round_trip(client)
     assert client.get_sequence_state("/ordered", 0)["data"]["position"] == 0
     assert client.execute_request("GET", "/ordered").content == binary
     assert client.execute_request("GET", "/ordered").text == "second-default"
-    assert client.execute_request("POST", "/ordered", data=binary).content == binary
-    assert client.execute_request("POST", "/ordered", data=binary).text == "second-rule"
-    assert client.execute_request("POST", "/ordered", data=binary).status_code == 409
+    assert client.execute_request("POST", "/ordered", content=binary).content == binary
+    assert client.execute_request("POST", "/ordered", content=binary).text == "second-rule"
+    assert client.execute_request("POST", "/ordered", content=binary).status_code == 409
 
 
 @pytest.mark.parametrize("mode", ["record", "replay"])
@@ -88,7 +88,7 @@ def test_real_recordings_survive_json_round_trip_and_replay_without_upstream(cli
     upstream.headers = [("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("X-Raw", "café".encode().decode("latin-1"))]
     upstream.status = 503
     configure(client, upstream, match_headers=["X-Key"])
-    client.execute_request("POST", "/recorded?x=1&x=2", data=b"\xff\x00", headers={"X-Key": "yes"})
+    client.execute_request("POST", "/recorded?x=1&x=2", content=b"\xff\x00", headers={"X-Key": "yes"})
     if mode == "replay":
         replay(client, match_headers=["X-Key"])
     entries = client.get_recordings("/recorded")["data"]
@@ -99,10 +99,10 @@ def test_real_recordings_survive_json_round_trip_and_replay_without_upstream(cli
     assert client.import_mocks(snapshot, mode="replace")["success"]
     assert client.get_recordings("/recorded")["data"] == entries
     replay(client, match_headers=["X-Key"])
-    response = client.execute_request("POST", "/recorded?x=1&x=2", data=b"\xff\x00", headers={"X-Key": "yes"})
+    response = client.execute_request("POST", "/recorded?x=1&x=2", content=b"\xff\x00", headers={"X-Key": "yes"})
     assert response.status_code == 503 and response.content == upstream.body
-    assert response.raw.headers.getlist("Set-Cookie") == ["a=1", "b=2"]
-    assert response.headers["X-Raw"] == "café".encode().decode("latin-1")
+    assert response.headers.get_list("Set-Cookie") == ["a=1", "b=2"]
+    assert (b"x-raw", "café".encode()) in response.headers.raw
     assert len(upstream.calls) == 1
 
 
@@ -270,7 +270,7 @@ def test_head_empty_reply_and_selected_header_values_import(client):
     response = client.execute_request("HEAD", "/recorded", headers={"X-Key": "yes"})
     assert response.status_code == 200 and response.content == b""
     assert response.headers["Content-Length"] == "99"
-    assert response.raw.headers.getlist("Set-Cookie") == ["a=1", "b=2"]
+    assert response.headers.get_list("Set-Cookie") == ["a=1", "b=2"]
 
 
 def test_snapshot_replace_invalidates_pending_recordings(client, upstream):

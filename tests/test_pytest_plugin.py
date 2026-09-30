@@ -8,13 +8,13 @@ class TestShippedFixtures:
         # No conftest, no pytest_plugins line: the fixtures arrive through the pytest11 entry point.
         pytester.makepyfile(
             """
-            import requests
+            import httpx2
 
 
             def test_mock_answers(proxy_mock, proxy_mock_url):
                 proxy_mock.configure_mock(path="/from-plugin", body={"ok": True})
 
-                response = requests.get(f"{proxy_mock_url}/from-plugin", timeout=5)
+                response = httpx2.get(f"{proxy_mock_url}/from-plugin", timeout=5)
 
                 assert response.json() == {"ok": True}
 

@@ -11,7 +11,7 @@ It suits automated tests, integration scenarios and local debugging of service-t
 [Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
 > **3.0 development, not a release:** this checkout implements the administrative REST API,
-> response sequences and record/replay.
+> response sequences, record/replay and unified Python clients using `httpx2`.
 > Its package version remains `2.13.0` until release preparation is complete. The HTTP reference
 > below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
 > Pin `proxy_mock>=2.13,<3` for the published compatible release. See
@@ -23,19 +23,19 @@ With Python 3.11 or newer, install the published 2.x package and test dependenci
 environment. The Python example also works with this development checkout:
 
 ```bash
-python -m pip install 'proxy_mock>=2.13,<3' pytest requests
+python -m pip install 'proxy_mock>=2.13,<3' pytest
 ```
 
 Save this complete test as `test_http_dependency.py`:
 
 ```python
-import requests
+import httpx2
 
 
 def test_http_dependency(proxy_mock, proxy_mock_url):
     proxy_mock.configure_mock(path="/inventory/sku-42", methods=["GET"], body={"available": 3})
 
-    response = requests.get(f"{proxy_mock_url}/inventory/sku-42", timeout=5)
+    response = httpx2.get(f"{proxy_mock_url}/inventory/sku-42", timeout=5)
 
     assert response.status_code == 200
     assert response.json() == {"available": 3}
@@ -288,6 +288,21 @@ The CLI validates the file before starting and restores the same data at startup
 Format 1 remains readable for static/proxy mocks and rules. Sequences and recordings require
 format 2, and a format 1 document containing them is rejected. Published 2.x cannot read
 format 2: do not relabel an exported format 2 document as format 1.
+
+### Python client transport
+
+In this 3.0 checkout, both `ProxyMock` and `AsyncProxyMock` return `httpx2.Response` from
+`execute_request()`. Check `.is_success` or explicit status codes; responses are always
+truthy. Use `content=` for raw bodies, `data=` for form mappings, and `follow_redirects=`
+for redirect handling. Wrapper-created clients do not follow redirects by default and use
+10-second timeouts for each network operation; `timeout=None` disables them.
+
+Pass `http_client=httpx2.Client(...)` or `httpx2.AsyncClient(...)` for custom headers,
+cookies, TLS, proxies or transports. The wrapper closes native clients it creates and leaves
+injected clients open. `.http_client` exposes the native client. For exception handling,
+per-request options and executable migration examples, see the
+[transport contract](MIGRATING.md#python-client-transport-in-this-checkout).
+Published 2.x keeps the previous synchronous response type and redirect behavior.
 
 **Requirements and limitations:**
 

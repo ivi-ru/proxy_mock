@@ -13,6 +13,14 @@ from proxy_mock.client.migration import (
     validate_admin_prefix,
 )
 from proxy_mock.client.service_endpoints import Endpoints
+from proxy_mock.client.transport import (
+    ProxyMockRequestError,
+    ProxyMockResponseError,
+    ResponseBody,
+    parse_response_body,
+    request_options,
+    request_url,
+)
 
 CONFIGURE_CONTENT_TYPE = "application/octet-stream"
 _UNSET = object()
@@ -28,26 +36,39 @@ def _build_traffic_settings_payload(record_unknown_traffic: bool | None, max_ite
     return payload
 
 
-class AsyncProxyMockRequestError(Exception):
+class AsyncProxyMockRequestError(ProxyMockRequestError):
     """Error while performing an async request to the proxy-mock server."""
 
 
-class AsyncProxyMockResponseError(Exception):
+class AsyncProxyMockResponseError(ProxyMockResponseError):
     """HTTP error returned by the proxy-mock server."""
 
 
 class AsyncProxyMock:
-    def __init__(self, host: str, timeout: float = 10.0, *, admin_prefix: str | None = None) -> None:
+    def __init__(
+        self,
+        host: str,
+        timeout: float | httpx2.Timeout | None = 10.0,
+        *,
+        admin_prefix: str | None = None,
+        http_client: httpx2.AsyncClient | None = None,
+    ) -> None:
         self.admin_prefix = validate_admin_prefix(admin_prefix)
+        if http_client is not None and not isinstance(http_client, httpx2.AsyncClient):
+            raise TypeError("http_client must be an httpx2.AsyncClient")
         self.host = host.rstrip("/")
         self.timeout = timeout
-        self._client = httpx2.AsyncClient(base_url=self.host, timeout=timeout)
+        self._owns_http_client = http_client is None
+        self.http_client = (
+            http_client if http_client is not None else httpx2.AsyncClient(base_url=self.host, timeout=timeout)
+        )
 
     def _service_endpoint(self, endpoint: str) -> str:
         return service_endpoint(endpoint, self.admin_prefix)
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        if self._owns_http_client:
+            await self.http_client.aclose()
 
     async def __aenter__(self):
         return self
@@ -55,20 +76,7 @@ class AsyncProxyMock:
     async def __aexit__(self, exc_type, exc, tb):
         await self.aclose()
 
-    @staticmethod
-    def _parse_response_body(response: httpx2.Response) -> dict | str | list | bytes | None:
-        if not response.content:
-            return None
-
-        content_type = response.headers.get("Content-Type", "")
-        if "json" in content_type:
-            try:
-                return response.json()
-            except Exception:
-                return response.text
-        if "text" in content_type:
-            return response.text
-        return response.content
+    _parse_response_body = staticmethod(parse_response_body)
 
     async def execute_request(
         self,
@@ -78,12 +86,14 @@ class AsyncProxyMock:
         **kwargs,
     ) -> httpx2.Response:
         try:
-            response = await self._client.request(method=str(method), url=route, **kwargs)
-        except (httpx2.ConnectError, httpx2.TimeoutException) as err:
+            response = await self.http_client.request(
+                method=str(method), url=request_url(self.host, route), **request_options(kwargs, self.timeout)
+            )
+        except httpx2.RequestError as err:
             raise AsyncProxyMockRequestError(f"Proxy-mock request error:\n{err}") from err
 
         if raise_for_status and response.status_code >= 400:
-            raise AsyncProxyMockResponseError(f"Proxy-mock returned HTTP {response.status_code}: {response.text}")
+            raise AsyncProxyMockResponseError(response)
         return response
 
     async def execute_request_and_get_response_body(
@@ -92,7 +102,7 @@ class AsyncProxyMock:
         route: str,
         json: dict | None = None,
         **kwargs,
-    ) -> dict | str | list | bytes | None:
+    ) -> ResponseBody:
         response = await self.execute_request(method=method, route=route, json=json, **kwargs)
         return self._parse_response_body(response)
 

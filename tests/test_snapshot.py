@@ -2,8 +2,8 @@
 
 import base64
 
+import httpx2
 import pytest
-import requests
 
 from proxy_mock.client import ProxyMock
 from proxy_mock.services.snapshot import SNAPSHOT_FORMAT
@@ -102,20 +102,20 @@ class TestImportValidation:
         ],
     )
     def test_invalid_snapshot_is_rejected(self, client: ProxyMock, snapshot):
-        response = requests.patch(SNAPSHOT_URL, json=snapshot, timeout=10)
+        response = httpx2.patch(SNAPSHOT_URL, json=snapshot, timeout=10)
 
         assert response.status_code == 422
         assert not response.json()["success"]
 
     def test_broken_json_is_rejected(self, client: ProxyMock):
-        response = requests.patch(
-            SNAPSHOT_URL, data=b"{not json", headers={"Content-Type": "application/json"}, timeout=10
+        response = httpx2.patch(
+            SNAPSHOT_URL, content=b"{not json", headers={"Content-Type": "application/json"}, timeout=10
         )
 
         assert response.status_code == 400
 
     def test_legacy_mode_parameter_is_rejected(self, client: ProxyMock):
-        response = requests.patch(f"{SNAPSHOT_URL}?mode=wipe", json={"format": 1, "mocks": []}, timeout=10)
+        response = httpx2.patch(f"{SNAPSHOT_URL}?mode=wipe", json={"format": 1, "mocks": []}, timeout=10)
 
         assert response.status_code == 422
 
@@ -128,7 +128,7 @@ class TestImportValidation:
             ],
         }
 
-        response = requests.put(SNAPSHOT_URL, json=snapshot, timeout=10)
+        response = httpx2.put(SNAPSHOT_URL, json=snapshot, timeout=10)
 
         assert response.status_code == 422
         assert response.json()["error"]["details"]["mock_index"] == 1

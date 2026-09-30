@@ -17,8 +17,8 @@ remaining 3.0 roadmap items are still pending.
 * Snapshots export format 2 and import formats 1 and 2. `GET /__admin/snapshot` exports;
   `PUT` replaces and `PATCH` merges complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
   use `GET` and `PATCH /__admin/settings`. Invalid traffic filters return `422`.
-* The Python clients and pytest fixtures use the administrative API. Client transports and
-  package installation remain unchanged at this stage. Response caching is removed.
+* The Python clients and pytest fixtures use the administrative API. Both clients now use
+  httpx2; package installation still includes the server. Response caching is removed.
 * Updated the HTTP reference and migration guide, keeping the released 2.13 alias behavior
   separate from the unreleased contract.
 
@@ -60,6 +60,20 @@ remaining 3.0 roadmap items are still pending.
   replies use explicit record/replay.
 * Legacy snapshot imports discard disabled null/zero cache settings and reject enabled or
   invalid settings atomically with a migration hint. New storage and exports omit the field.
+
+* **Breaking: unified Python transports.** `ProxyMock.execute_request()` now returns
+  `httpx2.Response`, matching `AsyncProxyMock`. Replace `.ok` / response truth testing with
+  explicit status checks, `allow_redirects` with `follow_redirects`, raw `data=` with
+  `content=`, and requests session/adapters with native httpx2 clients. Wrapper-created
+  clients do not follow redirects by default; both use a 10-second per-operation timeout.
+* Both clients wrap every httpx2 `RequestError`, preserving its cause. HTTP response errors
+  expose `.response`; the wrapper's `raise_for_status=True` still checks >=400. All four
+  wrapper error classes are exported from `proxy_mock.client`, with shared base classes.
+* Added `http_client=` injection and `.http_client` access for native transport settings.
+  Context exit closes owned clients, while injected clients remain caller-owned. Request
+  timeouts override the wrapper constructor timeout, including `None` to disable them.
+* Removed requests and its exclusive dependencies from the package and lockfile. Updated
+  examples, migration instructions and installed-wheel checks for the native response contract.
 
 Version 2.13.0
 ==============
