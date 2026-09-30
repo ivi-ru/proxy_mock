@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from starlette.routing import compile_path
 
 from proxy_mock.client.migration import normalize_mock_path
-from proxy_mock.core.deprecation import warn_deprecated_field
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.repositories.mock_storage import mock_storage
 from proxy_mock.services.recordings import RecordingStore
@@ -97,9 +96,6 @@ async def mock_initialization(
     recording_entries: list[dict] | None = None,
 ):
     mock_data["path"] = validate_mock_path(app, mock_data["path"])
-    if mock_data.get("cache_time"):
-        warn_deprecated_field("cache_time", "response caching is removed in 3.0")
-
     await create_mock_data(**mock_data)
 
     normalized_path = normalize_path(mock_data["path"])

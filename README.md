@@ -72,7 +72,6 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 - **Bounded in-memory traffic storage** (the last 1000 records by default)
 - **JSON snapshots** of the whole storage: export, load back, or preload at startup
 - **One command to start** (`proxy-mock`) and **pytest fixtures** that ship with the package
-- **Response caching** (`cache_time`) — deprecated; still present during development, with removal planned for 3.0
 
 ---
 
@@ -270,7 +269,7 @@ Format 2 keeps `sequence` definitions on mocks and rules. A mock with `recording
 also exports its `recordings` array, in oldest-write order. Each array entry has the same
 `id`, `request` and `response` representation returned by `GET /__admin/recordings`. An omitted
 array imports as empty. Export does not consume or reset sequences; import restarts cursors at
-zero. Sequence runtime positions, traffic, cache contents and requests in flight are excluded.
+zero. Sequence runtime positions, traffic and requests in flight are excluded.
 Settings, including record/replay mode, are preserved; import never contacts an upstream.
 
 Before mutation, import validates every mock, binary body and recording. Entry ids must match
@@ -347,7 +346,6 @@ such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mo
 | `DELETE` | `/__admin/recordings?path=%2Finventory` | Delete that collection or one entry selected by `id` | `200` |
 | `GET` | `/__admin/sequence-state?path=%2Finventory` | Inspect a sequence cursor; optional zero-based `rule` index | `200` |
 | `PATCH` | `/__admin/sequence-state?path=%2Finventory` | Restart that sequence with `{"position": 0}` | `200` |
-| `DELETE` | `/__admin/cache` | Clear the deprecated response cache, pending its removal | `200` |
 
 The query is part of a resource URI: `/__admin/mocks?path=%2Finventory` identifies the mock whose
 request path is `/inventory`. URL-encode the path rather than inserting it into administrative
@@ -389,7 +387,6 @@ replaced in full: `{"rules": []}` removes all rules. Null is invalid for non-nul
 | `timeout` | `float` | Delay before responding, seconds |
 | `sequence` | `object \| null` | Ordered response definition; see below |
 | `recording` | `object \| null` | Explicit record/replay configuration; see below |
-| `cache_time` | `int` | Deprecated response cache lifetime, seconds; removal remains planned |
 | `rules` | `list[dict]` | Rules producing different responses on one path |
 
 For example, create a mock and then change only its status code:
@@ -430,7 +427,6 @@ Send this representation to `PUT /__admin/mocks?path=%2Ftest%2Fendpoint`.
     },
     "extra_info": {"service": "example_service"},
     "timeout": 1.5,
-    "cache_time": 600,
     "rules": [
         {
             "input_data": {
@@ -516,8 +512,8 @@ cursor; replacing `rules` restarts rule cursors. `sequence: null` disables that 
 `rules: []` removes rule sequences. Deleting/clearing mocks removes their cursor state. A reset
 or replacement affects future reservations; requests already assigned a response retain it.
 
-Sequences cannot be combined with response caching or mock-level `proxy_host`, because those
-would bypass the ordered replies. A rule cannot combine its own sequence with its own
+Sequences cannot be combined with mock-level `proxy_host`, because proxying would bypass the
+ordered replies. A rule cannot combine its own sequence with its own
 `input_data.proxy_host`. These combinations return `422` before any configuration is changed.
 
 **Snapshots:** format 2 preserves sequence definitions, including binary responses. Import
@@ -600,8 +596,7 @@ the caller but cannot write into the new generation. A successful recording dele
 invalidates all pending writes for that mock, preventing a late response from undoing deletion.
 
 Record mode requires a mock-level `proxy_host`. Replay accepts it for later switching back to
-record mode, but does not use it. Record/replay rejects combinations with rules, response
-sequences or nonzero `cache_time` with `422`. Configured mock methods still apply; rejected
+record mode, but does not use it. Record/replay rejects combinations with rules or response sequences with `422`. Configured mock methods still apply; rejected
 methods and administrative requests never produce recordings. Static response and delay
 settings do not affect record/replay replies.
 
@@ -610,6 +605,22 @@ matching keys, binary bodies, repeated header pairs and eviction order. Entries 
 configured limits or failing integrity checks are rejected before mutation. Format 1 imports
 containing recording data return `422`. See [snapshot semantics](#snapshots-of-the-storage).
 
+## Removed response caching
+
+Response caching is removed in this 3.0 checkout. `cache_time` is no longer a mock field,
+`clean_cache()` is absent from both clients, and `/__admin/cache` returns an administrative
+`404`. Passing `cache_time` to either client's configure/patch helper raises `TypeError` before
+sending a request; direct HTTP configuration returns `422`, including for null or zero values.
+Remove the argument from static mocks: their reply remains available until reconfiguration or
+deletion, and configured delays apply to every request. Ordinary mock/rule proxying always
+fetches the upstream. For saved upstream replies, use explicit [record/replay](#recordreplay).
+
+Snapshot imports accept legacy `cache_time: null` or `cache_time: 0` and discard those disabled
+settings. Any enabled or invalid cache setting returns `422` before mutation. Remove the field
+from the file, or migrate the test to record/replay; importing a snapshot never records an
+upstream response automatically. New storage representations and snapshot exports omit
+`cache_time`. Published 2.x continues to provide its existing caching API.
+
 ## Catching requests on `/<path>`
 
 For any path that has a mock configured, the server processes the request in this order:
@@ -617,10 +628,9 @@ For any path that has a mock configured, the server processes the request in thi
 1. Records the request in traffic.
 2. Checks the method, otherwise `405 Method Not Allowed`.
 3. If record/replay is configured, either serves a matching saved reply or proxies and records the response as described above.
-4. Returns a cached response when `cache_time` is set and there is a cache hit.
-5. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
-6. Otherwise selects the first matching rule, or the default response. If it has a sequence, reserves its next entry before waiting.
-7. Applies `timeout` (and any matching rule delay), then serves the selected rule response, default sequence entry, or static `mock_data`. Exhausted `error` sequences return `409` immediately.
+4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Every proxied request reaches the upstream.
+5. Otherwise selects the first matching rule, or the default response. If it has a sequence, reserves its next entry before waiting.
+6. Applies `timeout` (and any matching rule delay), then serves the selected rule response, default sequence entry, or static `mock_data`. Exhausted `error` sequences return `409` immediately.
 
 If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /__admin/settings`.
 

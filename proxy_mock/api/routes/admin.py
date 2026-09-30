@@ -24,7 +24,6 @@ from proxy_mock.api.schemas import (
     MockResource,
     MockResponse,
     SequenceStatePatch,
-    SuccessResponse,
 )
 from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.core.serializers import convert_bytes_to_str
@@ -301,14 +300,6 @@ async def update_snapshot(request: Request):
     except SnapshotError as err:
         raise api_error(err.code, "invalid_snapshot", "Invalid mock snapshot", err.detail) from err
     return {"success": True, "data": result}
-
-
-@router.delete("/cache", response_model=SuccessResponse)
-async def delete_cache(request: Request):
-    """Temporary resource until the separately planned cache removal."""
-    check_query(request, set())
-    await request.app.state.cache.clear()
-    return {"success": True}
 
 
 @router.get("/recordings", response_model=DataResponse)

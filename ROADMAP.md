@@ -166,7 +166,6 @@ justifies changing it.
 | `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export format 2; replace or merge formats 1 and 2 |
 | `/__admin/recordings?path=<encoded-path>` | `GET`, `DELETE` | Inspect or delete recorded replies; optional `id` selects one |
 | `/__admin/sequence-state?path=<encoded-path>` | `GET`, `PATCH` | Inspect or restart a mock/rule sequence cursor |
-| `/__admin/cache` | `DELETE` | Clear the deprecated cache while its removal remains pending |
 
 A mock's query parameter is part of its resource URI. `PUT` creates with `201` or replaces with
 `200`; `PATCH` requires an existing mock and preserves omitted fields. Missing item reads,
@@ -177,15 +176,22 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: cache removal, client transport unification, the installation split, and final release checks.
+The following steps are still pending: client transport unification, the installation split,
+and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
 
-`cache_time`, `POST /cache/clean` and the cache service are deleted. Caching a mock response is
+Implemented locally: `cache_time`, `clean_cache()`, the cache resource, response-cache code and
+TTL storage are deleted. Caching a mock response is
 close to a no-op by construction — the mock is already static and cheap — and the one case where
 it does something, a proxied response, is better served by record & replay, which is explicit
 about what was recorded and lets you look at it.
+
+The clients reject the removed argument before network access; HTTP mock configuration
+rejects it with `422`. Legacy snapshots may contain disabled null/zero cache settings, which
+are discarded on import. Enabled settings are rejected before mutation so proxying cannot
+silently change into repeated upstream access. See [the migration guide](MIGRATING.md#removed-response-caching-in-this-checkout).
 
 ### Record & replay
 
@@ -195,7 +201,7 @@ Exact matching uses method, raw path/query and body bytes, with optional selecte
 Replay never contacts the upstream; missing keys return `404`. Collections are bounded by
 count and serialized bytes, and repeated keys keep the last completed reply. Transport
 failures are excluded; upstream HTTP errors and binary replies are retained. This replaces
-the useful proxied response use case of the cache planned for removal.
+the useful proxied response use case of the removed cache.
 
 Format 2 snapshots preserve completed recordings and their eviction order; import validates
 keys, headers, bodies and limits before changing state. Format 1 imports reject record/replay

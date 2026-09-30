@@ -18,8 +18,7 @@ remaining 3.0 roadmap items are still pending.
   `PUT` replaces and `PATCH` merges complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
   use `GET` and `PATCH /__admin/settings`. Invalid traffic filters return `422`.
 * The Python clients and pytest fixtures use the administrative API. Client transports and
-  package installation remain unchanged at this stage. Deprecated response caching remains
-  available through `DELETE /__admin/cache` until the separate cache-removal step.
+  package installation remain unchanged at this stage. Response caching is removed.
 * Updated the HTTP reference and migration guide, keeping the released 2.13 alias behavior
   separate from the unreleased contract.
 
@@ -29,7 +28,7 @@ remaining 3.0 roadmap items are still pending.
 * Added `GET` and `PATCH /__admin/sequence-state` and matching sync/async client helpers to
   inspect and restart a cursor. Unrelated PATCH updates preserve positions; explicit sequence
   or rule replacement restarts the corresponding cursors. Full mock replacement resets all.
-* Sequence configuration rejects incompatible caching/proxy settings. Format 1 imports
+* Sequence configuration rejects incompatible mock-level proxy settings. Format 1 imports
   containing sequences return `422`; format 2 preserves their
   definitions and binary responses.
 
@@ -46,13 +45,21 @@ remaining 3.0 roadmap items are still pending.
 
 * Added snapshot format 2 with mock/rule sequence definitions and completed recording entries,
   preserving binary bodies, repeated header pairs, matching keys and eviction order. Export
-  is observational; imported sequence cursors restart at zero. Traffic, caches and pending
+  is observational; imported sequence cursors restart at zero. Traffic and pending
   requests are excluded. Format 1 remains accepted for legacy mock configuration.
 * Snapshot validation checks the whole document, including recording integrity, duplicate ids,
   header/body consistency and configured storage limits, before mutating state. Invalid data
   is rejected rather than trimmed. Merge replaces supplied mocks and recordings in full.
 * CLI preload and both clients restore format 2; OpenAPI documents both accepted formats and
   the format 2 export. Ambiguous config bodies containing both body and body_b64 are rejected.
+
+* **Breaking: removed response caching.** The cache resource, `cache_time`, `clean_cache()`,
+  response-cache implementation and TTL storage are removed. Client helpers reject the old
+  argument locally; HTTP configuration rejects it with `422`. Static delays apply on every
+  request, and ordinary mock/rule proxying fetches the upstream every time. Saved upstream
+  replies use explicit record/replay.
+* Legacy snapshot imports discard disabled null/zero cache settings and reject enabled or
+  invalid settings atomically with a migration hint. New storage and exports omit the field.
 
 Version 2.13.0
 ==============

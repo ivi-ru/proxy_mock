@@ -145,7 +145,6 @@ class MockPathSchema(BaseModel):
     proxy_host: str | None = Field(None)
     timeout: float | None = Field(None)
     rules: list[MockRulesSchema] | None = Field(None)
-    cache_time: int | None = Field(None)
     sequence: SequenceSchema | None = None
     recording: RecordingSchema | None = None
 

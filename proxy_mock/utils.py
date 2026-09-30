@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 
 from proxy_mock.core.logging import app_logger
 from proxy_mock.core.serializers import convert_bytes_to_str, formatted_data
-from proxy_mock.services.cache_service import build_cache_key, cache_response
 from proxy_mock.services.proxy_service import (
     ProxyRequestError,
     filter_proxy_response_headers,
@@ -101,16 +100,6 @@ def apply_mocks_factory(
                     )
                 return recorded_response(entry["response"])
 
-        # cache
-        cache_time = mock_data.get("cache_time")
-        cache_key = None
-        if cache_time:
-            cache_key = await build_cache_key(request, mock_data)
-            cached_response = await app.state.cache.get(cache_key)
-            if cached_response:
-                logger.info("Returning a cached response")
-                return Response(**cached_response)
-
         # proxy
         if proxy_host := mock_data.get("proxy_host"):
             if not is_proxy_host_allowed(proxy_host):
@@ -121,7 +110,7 @@ def apply_mocks_factory(
             try:
                 proxy_response = await proxy_request_to_host(request, proxy_host, http_client)
             except ProxyRequestError as err:
-                # An unreachable host is no reason to cache the response or to return 500.
+                # Keep upstream transport failures distinct from application errors.
                 logger.error(err.detail)
                 return JSONResponse({"error": err.detail}, status_code=err.code)
 
@@ -145,9 +134,6 @@ def apply_mocks_factory(
                 filter_proxy_response_headers(proxy_response.headers),
             )
 
-            if cache_time and cache_key:
-                await cache_response(app, cache_key, response, cache_time)
-
             return response
 
         timeout = mock_data.get("timeout") or 0
@@ -155,8 +141,6 @@ def apply_mocks_factory(
             if rules := mock_data.get("rules"):
                 rule_response = await apply_rules(app, request, rules, sequences=sequences, delay=timeout)
                 if rule_response is not None:
-                    if cache_time and cache_key:
-                        await cache_response(app, cache_key, rule_response, cache_time)
                     return rule_response
             response_data = await sequences[None].take() if None in sequences else mock_data["mock_data"]
         except SequenceExhausted as err:
@@ -172,9 +156,6 @@ def apply_mocks_factory(
             f"{json.dumps(convert_bytes_to_str(response_data), ensure_ascii=False)}"
         )
         response = make_response(response_data)
-
-        if cache_time and cache_key:
-            await cache_response(app, cache_key, response, cache_time)
 
         return response
 

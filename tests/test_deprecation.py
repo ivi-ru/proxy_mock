@@ -43,7 +43,7 @@ def test_resource_deletions_and_partial_settings(client, restore_traffic_setting
     assert "Deprecation" not in response.headers
 
 
-@pytest.mark.parametrize("suffix", ["/mocks", "/traffic", "/settings", "/snapshot", "/cache"])
+@pytest.mark.parametrize("suffix", ["/mocks", "/traffic", "/settings", "/snapshot"])
 def test_no_post_action_aliases_remain(client, suffix):
     response = client.execute_request("POST", "/__admin" + suffix, json={})
     assert response.status_code == 405

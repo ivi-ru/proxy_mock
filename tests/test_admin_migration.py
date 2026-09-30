@@ -231,8 +231,8 @@ def test_sync_client_uses_resources_and_preserves_response_type(admin_server):
         assert client.execute_request("GET", "/binary").content == b""
         assert client.delete_mock("/binary")["success"]
         assert client.delete_mock("/missing")["success"] is False
-        with pytest.warns(DeprecationWarning, match="clean_cache"):
-            assert client.clean_cache()["success"]
+        with pytest.raises(AttributeError):
+            client.clean_cache()
         assert client.clean_traffic()["success"]
         assert client.get_traffic()["count"] == 0
 
@@ -258,26 +258,21 @@ def test_async_client_uses_resources(admin_server):
             assert (await client.execute_request("GET", "/async")).content == b""
             assert (await client.delete_mock("/async"))["success"]
             assert (await client.delete_mock("/missing"))["success"] is False
-            with pytest.warns(DeprecationWarning, match="clean_cache"):
-                assert (await client.clean_cache())["success"]
+            with pytest.raises(AttributeError):
+                await client.clean_cache()
             await client.clean_traffic()
             assert (await client.get_traffic())["count"] == 0
 
     asyncio.run(scenario())
 
 
-def test_python_warnings_use_normal_filtering_and_preserve_cache(client):
+def test_python_transport_warnings_use_normal_filtering(client):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("default", DeprecationWarning)
         for _ in range(3):
             with ProxyMock(client.host):
                 pass
-        for _ in range(3):
-            client.configure_mock(path="/cached", body="ok", cache_time=60)
     assert len([w for w in caught if "httpx2" in str(w.message)]) == 1
-    assert len([w for w in caught if "cache_time" in str(w.message)]) == 1
-    assert client.get_storage("/cached")["data"]["cache_time"] == 60
-    assert client.execute_request("GET", "/cached").text == "ok"
 
 
 def test_openapi_documents_resources_and_request_and_response_contracts(admin_server):
@@ -289,7 +284,6 @@ def test_openapi_documents_resources_and_request_and_response_contracts(admin_se
         "/traffic": {"get", "delete"},
         "/settings": {"get", "patch"},
         "/snapshot": {"get", "put", "patch"},
-        "/cache": {"delete"},
     }
     for suffix, methods in expected.items():
         path = prefix + suffix if prefix + suffix in paths else suffix

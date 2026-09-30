@@ -29,7 +29,6 @@ class MockStorage:
         proxy_host: str | None,
         timeout: float,
         rules: list[dict],
-        cache_time: int,
         sequence: dict | None = None,
         recording: dict | None = None,
     ) -> dict:
@@ -42,7 +41,6 @@ class MockStorage:
             proxy_host=proxy_host,
             timeout=timeout,
             rules=rules,
-            cache_time=cache_time,
             sequence=sequence,
             recording=recording,
         ).model_dump()

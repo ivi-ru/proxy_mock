@@ -7,7 +7,6 @@ import httpx2
 import msgpack
 
 from proxy_mock.client.migration import (
-    MIGRATION_URL,
     normalize_mock_path,
     sequence_query,
     service_endpoint,
@@ -108,12 +107,13 @@ class AsyncProxyMock:
         timeout: float | None = None,
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
-        cache_time: int | None = None,
         sequence: dict | None = None,
         recording: dict | None = None,
         include_none: bool = False,
         **kwargs,
     ) -> dict:
+        if "cache_time" in kwargs:
+            raise TypeError("cache_time has been removed; use recording for upstream record/replay")
         mock_data = {}
         if body is not _UNSET:
             mock_data["body"] = body
@@ -135,14 +135,6 @@ class AsyncProxyMock:
             request_data["timeout"] = timeout
         if rules is not _UNSET and (include_none or rules is not None):
             request_data["rules"] = rules
-        if cache_time is not _UNSET and (include_none or cache_time is not None):
-            warnings.warn(
-                f"cache_time is deprecated and will be removed in 3.0; see {MIGRATION_URL}",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            request_data["cache_time"] = cache_time
-
         if sequence is not _UNSET and (include_none or sequence is not None):
             request_data["sequence"] = sequence
 
@@ -177,7 +169,6 @@ class AsyncProxyMock:
         timeout: float | None = None,
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
-        cache_time: int | None = None,
         sequence: dict | None = None,
         recording: dict | None = None,
         **kwargs,
@@ -192,7 +183,6 @@ class AsyncProxyMock:
             timeout=timeout,
             rules=rules,
             methods=methods,
-            cache_time=cache_time,
             sequence=sequence,
             recording=recording,
             **kwargs,
@@ -210,7 +200,6 @@ class AsyncProxyMock:
         timeout: float | None = _UNSET,
         rules: list[dict] | None = _UNSET,
         methods: list[str] | None = _UNSET,
-        cache_time: int | None = _UNSET,
         sequence: dict | None = _UNSET,
         recording: dict | None = _UNSET,
         **kwargs,
@@ -225,7 +214,6 @@ class AsyncProxyMock:
             timeout=timeout,
             rules=rules,
             methods=methods,
-            cache_time=cache_time,
             sequence=sequence,
             recording=recording,
             include_none=True,
@@ -312,17 +300,6 @@ class AsyncProxyMock:
         query = sequence_query(path, rule_index)
         route = f"{self._service_endpoint(Endpoints.SEQUENCE_STATE)}?{query}"
         return await self.execute_request_and_get_response_body(HTTPMethod.PATCH, route, json={"position": 0})
-
-    async def clean_cache(self):
-        """Deprecated: response caching and this endpoint are removed in 3.0."""
-        warnings.warn(
-            "clean_cache() is deprecated and will be removed in 3.0 together with response caching",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return await self.execute_request_and_get_response_body(
-            HTTPMethod.DELETE, self._service_endpoint(Endpoints.CACHE_CLEAN)
-        )
 
     async def get_recordings(self, path: str, recording_id: str | None = None) -> dict:
         """Inspect recorded requests and responses; binary bodies are base64 strings."""

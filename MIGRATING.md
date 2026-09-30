@@ -5,7 +5,7 @@ response sequences and record/replay; package version metadata remains `2.13.0` 
 release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Cache removal, transport unification and the client/server
+Transport unification and the client/server
 installation split remain later steps. They are not implemented by this checkout.
 
 ## Administrative REST API in this checkout
@@ -37,7 +37,7 @@ operations. A prefix provides routing isolation, not authentication.
 | `GET /storage/snapshot` | `GET /__admin/snapshot` |
 | `POST /storage/snapshot?mode=replace` | `PUT /__admin/snapshot` |
 | `POST /storage/snapshot?mode=merge` | `PATCH /__admin/snapshot` |
-| `POST /cache/clean` | `DELETE /__admin/cache`, pending cache removal |
+| `POST /cache/clean` | Removed; no administrative cache resource |
 | `GET /docs`, `/redoc`, `/openapi.json` | `GET /__admin/docs`, `/__admin/redoc`, `/__admin/openapi.json` |
 
 There are no action-style `POST` aliases. A query is part of the resource URI, so
@@ -128,8 +128,7 @@ administrative requests. Published 2.13 clients use a different HTTP contract ev
 opt-in prefix is `/__admin`.
 
 The synchronous client still uses `requests`; changing transports and installation extras is
-separate work. Deprecated caching also remains in this step, with cleanup at
-`DELETE /__admin/cache`. Do not depend on that resource in new tests: cache removal is planned for 3.0.
+separate work. Response caching is removed as described below.
 
 ## Record/replay in this checkout
 
@@ -169,7 +168,7 @@ reset, reconfiguration or deletion.
 Format 2 exports sequence definitions and binary responses; imported cursors start at zero.
 Export does not change positions. Format 1 imports with sequences return `422` atomically.
 Ordinary format 1 snapshots remain supported. Published 2.x cannot read format 2; do not
-relabel its envelope as format 1. Traffic, cache contents and in-flight requests are excluded.
+relabel its envelope as format 1. Traffic and in-flight requests are excluded.
 Snapshot merge replaces supplied mocks and recordings completely while preserving omitted
 mocks. Missing recording arrays mean empty collections. The CLI restores format 2 at startup.
 See the [snapshot contract](README.md#snapshots-of-the-storage).
@@ -288,14 +287,23 @@ Switch existing uvicorn entry points from `proxy_mock.any_catcher:app` to the su
 `uvicorn proxy_mock.app:create_app --factory`, or use the `proxy-mock` console command already
 available in 2.x. Only one worker is supported because storage is in process memory.
 
-## Remaining 3.0 work: caching and new features
+## Removed response caching in this checkout
 
-`cache_time`, `clean_cache()` and the cache resource will be removed. The old action-style
-`POST /cache/clean` is already gone in this checkout; temporary cleanup uses `DELETE /__admin/cache`. Remove caching from static
-mocks now; their configured response already remains available until the mock is changed or
-removed. For cached upstream responses, use the explicit record/replay configuration described
-above in this checkout. Published 2.13 retains caching and has no record/replay API.
+`cache_time`, `clean_cache()` and both the legacy and administrative cache resources are
+removed. Passing the field to either client's configure/patch helper raises `TypeError`
+locally, and direct HTTP mock configuration returns `422` even for null or zero. Calling
+`clean_cache()` raises `AttributeError`; `/__admin/cache` returns `404` and remains protected
+from user-mock shadowing. Remove cleanup calls and the field from your tests.
 
-Record/replay and ordered response sequences are implemented in this checkout as documented
-above, including snapshot format 2 support.
+Static mock replies stay available until reconfiguration or deletion, and delays apply to
+every request. Ordinary proxying reaches the upstream on each request. Use explicit
+[record/replay](README.md#recordreplay) to capture and serve upstream replies.
+
+For migration, snapshot imports accept and discard disabled legacy cache values (`null` or
+integer zero). Enabled or invalid cache values return `422` without changing configuration,
+recordings or cursors. Remove the field from those files or migrate the scenario explicitly;
+import never contacts an upstream to populate recordings. New exports omit the field.
+Published 2.13 retains its caching API and transport behavior.
+
+Record/replay, ordered sequences and snapshot format 2 are implemented in this checkout.
 gRPC and an authentication token are outside the 3.0 scope.

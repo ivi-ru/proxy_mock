@@ -1,7 +1,7 @@
 """Versioned JSON snapshots of configuration and completed HTTP recordings.
 
 Format 2 carries sequences and recorded replies. Format 1 remains readable for legacy mocks.
-Sequence cursors, traffic, caches and requests in flight are intentionally not serialized.
+Sequence cursors, traffic and requests in flight are intentionally not serialized.
 """
 
 import base64
@@ -205,6 +205,12 @@ def parse_snapshot(snapshot: Any) -> list[dict]:
             ):
                 raise ValueError("Sequences and recordings require snapshot format 2")
             data = _convert_mock(mock, _decode_section)
+            if "cache_time" in data:
+                cache_time = data.pop("cache_time")
+                if cache_time is not None and not (type(cache_time) is int and cache_time == 0):
+                    raise ValueError(
+                        "cache_time has been removed; remove it or replace cached proxying with record/replay"
+                    )
             entries = data.pop("recordings", None)
             value = MockResource.model_validate(data).model_dump()
             value["path"] = normalize_mock_path(data["path"])
