@@ -8,6 +8,7 @@ does not start. This file is run against an installed wheel in a clean virtualen
 import shutil
 import subprocess
 import sys
+from importlib.metadata import version
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -23,7 +24,6 @@ def test_removed_dependencies_are_not_installed():
         "requests",
         "charset_normalizer",
         "urllib3",
-        "certifi",
     ):
         assert find_spec(package) is None, f"unexpected runtime dependency: {package}"
 
@@ -42,7 +42,7 @@ def _console_script() -> str:
 def test_console_script_reports_a_version():
     result = subprocess.run([_console_script(), "--version"], capture_output=True, text=True, check=True)
 
-    assert result.stdout.startswith("proxy-mock ")
+    assert result.stdout.strip() == f"proxy-mock {version('proxy_mock')}"
 
 
 def test_module_entry_point_is_runnable():
@@ -53,6 +53,7 @@ def test_module_entry_point_is_runnable():
 
 def test_shipped_fixtures_serve_a_mock(proxy_mock, proxy_mock_url):
     """Uses the fixtures from the pytest11 entry point, which only exist if the wheel ships them."""
+    assert proxy_mock.get_proxy_mock()["version"] == version("proxy_mock")
     proxy_mock.configure_mock(path="/smoke", body={"installed": True})
 
     response = httpx2.get(f"{proxy_mock_url}/smoke", timeout=5)

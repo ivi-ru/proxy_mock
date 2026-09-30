@@ -1,8 +1,8 @@
 # Runnable examples
 
 These examples target the unreleased 3.0 checkout. Published 2.x servers and clients have a
-different administrative HTTP API. Package metadata remains 2.13.0 until final release checks;
-it does not indicate compatibility with published 2.13. No external API or credentials are needed.
+different administrative HTTP API. Package metadata is 3.0.0; this version is prepared locally
+and has not been published. No external API or credentials are needed.
 
 ## Run from this repository
 

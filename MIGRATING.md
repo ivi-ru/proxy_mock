@@ -1,9 +1,8 @@
 # Migrating from 2.x to 3.0
 
 **3.0 is in development, not released.** This checkout implements its administrative REST API,
-response sequences and record/replay; package version metadata remains `2.13.0` until the final
-release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
-the checkout's HTTP compatibility from its temporary package version.
+response sequences and record/replay. Package version metadata is `3.0.0`; it has not been
+published. Published 2.13 keeps the old routes, status codes, response bodies and client transports.
 
 Both clients now use `httpx2`. The base install contains clients; the optional `server` extra
 provides dependencies for a local server as described below.
@@ -146,6 +145,8 @@ opt-in prefix is `/__admin`.
 
 Both clients return `httpx2.Response`; migrate request arguments and response handling
 as described below. Response caching is removed; local startup requires the `server` extra.
+`clean_storage()` deletes the whole collection. The deprecated `path` argument is removed
+and raises `TypeError`, including explicit null; use `delete_mock(path)` for one mock.
 
 ## Record/replay in this checkout
 
@@ -193,8 +194,9 @@ See the [snapshot contract](README.md#snapshots-of-the-storage).
 ## Python client transport in this checkout
 
 Both `ProxyMock` and `AsyncProxyMock` now use `httpx2` and return its buffered `Response`
-from `execute_request()`. `requests`, `charset-normalizer`, `urllib3` and `certifi` are no
-longer installed by proxy-mock. Published 2.13 retains `requests.Session` and
+from `execute_request()`. `requests`, `charset-normalizer` and `urllib3` are no longer
+installed by proxy-mock. Early supported httpx2 versions can still depend on `certifi`;
+it is absent from the current lockfile. Published 2.13 retains `requests.Session` and
 `requests.Response` for the synchronous client.
 
 ### Response handling and request arguments

@@ -77,7 +77,7 @@ class TestUnreachableProxyHost:
 
         client.execute_request(HTTPMethod.GET, configure_mock_data["path"])
 
-        client.clean_storage(path=configure_mock_data["path"])
+        client.delete_mock(path=configure_mock_data["path"])
         configure_mock_data.pop("proxy_host")
         configure_mock_data["body"] = {"host": "up"}
         assert client.configure_mock(**configure_mock_data).get("success")

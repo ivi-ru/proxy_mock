@@ -1,8 +1,7 @@
 Version 3.0.0 (unreleased)
 ==========================
 
-Local preparation is in progress. Package version metadata has not yet been bumped; the
-remaining 3.0 roadmap items are still pending.
+Prepared locally as version 3.0.0. This release has not been published.
 
 * **Breaking: administrative REST API.** The configurable administrative namespace defaults
   to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are
@@ -91,6 +90,10 @@ remaining 3.0 roadmap items are still pending.
 * Added runnable REST lifecycle, binary sequence, offline recording snapshot and async-client
   examples. The storefront scripts accept local URLs and a custom administrative prefix, so
   their HTTP behavior is tested without Docker as well as through the Compose CI check.
+
+* **Breaking: removed the deprecated `clean_storage(path=...)` selector** from both clients.
+  Use `delete_mock(path)` for one mock or `clean_storage()` for the entire collection.
+  Old keyword/positional selectors raise `TypeError` before any data is deleted.
 
 Version 2.13.0
 ==============

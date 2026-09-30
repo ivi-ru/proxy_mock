@@ -12,8 +12,8 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 > **3.0 development, not a release:** this checkout implements the administrative REST API,
 > response sequences, record/replay, unified Python clients using `httpx2`, and the `server` extra.
-> Its package version remains `2.13.0` until release preparation is complete. The HTTP reference
-> below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
+> Its package version is `3.0.0`; publication is still a separate maintainer action. The HTTP
+> reference below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
 > Pin `proxy_mock>=2.13,<3` for the published compatible release. See
 > [Migrating from 2.x to 3.0](MIGRATING.md) for the HTTP changes and work still planned.
 

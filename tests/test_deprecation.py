@@ -1,6 +1,10 @@
 """Removed administrative actions cannot mutate resources in the 3.0 API."""
 
+import asyncio
+
 import pytest
+
+from proxy_mock.client import AsyncProxyMock
 
 
 @pytest.mark.parametrize(
@@ -49,3 +53,23 @@ def test_no_post_action_aliases_remain(client, suffix):
     assert response.status_code == 405
     assert "POST" not in response.headers["Allow"]
     assert response.json()["success"] is False
+
+
+@pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("argument", ["keyword-path", "keyword-none", "positional-path"])
+def test_removed_clean_storage_selector_cannot_delete_mocks(client, asynchronous, argument):
+    client.configure_mock("/kept", body="kept")
+    args = ("/kept",) if argument == "positional-path" else ()
+    kwargs = {} if args else {"path": None if argument == "keyword-none" else "/kept"}
+    if asynchronous:
+
+        async def scenario():
+            async with AsyncProxyMock(client.host) as admin:
+                with pytest.raises(TypeError):
+                    await admin.clean_storage(*args, **kwargs)
+
+        asyncio.run(scenario())
+    else:
+        with pytest.raises(TypeError):
+            client.clean_storage(*args, **kwargs)
+    assert client.get_storage("/kept")["data"]["mock_data"]["body"] == "kept"

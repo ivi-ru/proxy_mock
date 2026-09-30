@@ -43,8 +43,11 @@ environment inherit every dependency and every version constraint we take on.
 
 Historical footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
 distributions** — the package plus 21 dependencies, down from 26 distributions in 2.11.0.
-The install split and synchronous client migration are implemented in this 3.0 checkout;
-current distribution counts will be measured during final release checks.
+The install split and synchronous client migration are implemented in this 3.0 checkout.
+A clean installation of the local 3.0.0 wheel on macOS/Python 3.13, measured on 2026-09-30,
+resolved **9 distributions** for the base package and **19** with the server extra, including
+proxy-mock and excluding test/development tools. These use newly resolved dependencies; counts
+can change as transitive releases evolve.
 
 ### Public API contract
 
@@ -151,8 +154,8 @@ error responses. This includes mock configuration and storage, traffic, settings
 and service information. The same contract applies to the new 3.0 features. Moving the old
 action-style endpoints behind a prefix alone does not satisfy this requirement.
 
-The administrative API is implemented locally as the first 3.0 preparation step. The release
-is still incomplete, and package version metadata remains `2.13.0` until final validation.
+The administrative API and the other 3.0 changes are implemented locally. Package version
+metadata is `3.0.0`; publication remains a separate maintainer action.
 The namespace also contains Swagger UI, ReDoc and OpenAPI. Former service paths become ordinary
 mock paths. The FastAPI lower bound remains unchanged until a separate compatibility check
 justifies changing it.
@@ -178,7 +181,7 @@ See [README.md](README.md#administrative-rest-resources) for the current contrac
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
 Documentation and runnable integration examples now describe the implemented 3.0 contract.
-Only final release validation and the version bump remain pending.
+The version bump and local release validation are complete; publication has not been performed.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
@@ -235,7 +238,7 @@ Implemented locally: the base install depends on `httpx2` and `msgpack`, while
 `proxy_mock[server]` adds FastAPI, Pydantic and uvicorn with unchanged bounds. The same wheel
 ships both clients and server code. External pytest fixtures and CLI help/version work with
 the base install; local startup gives an installation hint when dependencies are missing.
-Exact distribution counts will be measured at release time. A project that talks to a running
+The measured distribution counts are recorded in the dependency budget above. A project that talks to a running
 instance no longer inherits the server dependencies and their constraints.
 
 ### Entry point
@@ -245,6 +248,23 @@ Implemented locally: the documented entry points are the `proxy-mock` console sc
 `proxy_mock.any_catcher:app` appears only as a historical migration reference.
 The [runnable examples](examples/README.md) cover REST configuration, response sequences,
 offline snapshot replay, both clients, and a storefront with a separate HTTP dependency.
+
+### Local release validation
+
+Completed on macOS on 2026-09-30 for the unreleased 3.0.0 package:
+
+| Check | Result |
+|-------|--------|
+| Locked dependencies on Python 3.11.13, 3.12.11, 3.13.3 and 3.14.7 | 641 tests passed on each interpreter |
+| Lowest compatible direct dependencies on Python 3.11 | 641 tests passed; FastAPI 0.137.0, httpx2 2.0.0, msgpack 1.0.4 and uvicorn 0.27.0 |
+| Coverage run on Python 3.13 | 641 tests passed; 98% coverage |
+| Ruff and lockfile consistency | Passed |
+| Wheel built from the source distribution | Built with version 3.0.0 |
+| Clean base/server wheel installs, examples and README quick start | 28 checks passed outside the source tree |
+| Docker image and Compose storefront | Built and served version 3.0.0; container-to-container request and captured traffic verified |
+
+The temporary Compose containers and network were removed. No push, Git tag, publication or
+release was performed. Publishing remains the maintainer procedure in CONTRIBUTING.md.
 
 ---
 

@@ -1,4 +1,3 @@
-import warnings
 from http import HTTPMethod
 from typing import Any
 from urllib.parse import urlencode
@@ -245,19 +244,8 @@ class AsyncProxyMock:
         full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode(query_params)}"
         return await self.execute_request_and_get_response_body(HTTPMethod.GET, full_path)
 
-    async def clean_storage(self, path: str | None = None):
-        """Delete mocks: all of them, or the one at `path`.
-
-        Passing a path is deprecated — use `delete_mock()`. Both report a missing mock with `404`.
-        """
-        if path is not None:
-            warnings.warn(
-                "clean_storage(path=...) is deprecated and will be removed in 3.0; use delete_mock(path)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return await self.delete_mock(path)
-
+    async def clean_storage(self):
+        """Delete all mocks. Use delete_mock(path) to delete one mock."""
         return await self.execute_request_and_get_response_body(
             HTTPMethod.DELETE, self._service_endpoint(Endpoints.STORAGE)
         )

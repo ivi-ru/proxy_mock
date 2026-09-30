@@ -55,14 +55,14 @@ class TestClearStorage:
         assert not storage["data"]
 
     def test_delete_existing_mock(self, client: ProxyMock, configure_mock):
-        response = client.clean_storage(configure_mock["path"])
+        response = client.delete_mock(configure_mock["path"])
         assert response.get("success")
 
         storage = client.get_storage(configure_mock["path"])
         assert storage["error"]["code"] == "mock_not_found"
 
     def test_delete_non_existent_mock(self, client: ProxyMock, configure_mock):
-        response = client.clean_storage(configure_mock["path"] + "/test")
+        response = client.delete_mock(configure_mock["path"] + "/test")
         assert not response.get("success")
 
         storage = client.get_storage(configure_mock["path"])
