@@ -79,4 +79,9 @@ class MockResource(ConfigureMockRequestSchema):
         has_sequence = self.sequence is not None or any(rule.sequence is not None for rule in self.rules or [])
         if has_sequence and (self.cache_time or self.proxy_host):
             raise ValueError("Response sequences cannot be combined with mock-level proxy_host or response caching")
+        if self.recording is not None:
+            if self.recording.mode == "record" and not self.proxy_host:
+                raise ValueError("Recording requires a mock-level proxy_host")
+            if has_sequence or self.rules or self.cache_time:
+                raise ValueError("Record/replay cannot be combined with rules, sequences or response caching")
         return self

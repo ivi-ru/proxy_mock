@@ -87,6 +87,7 @@ def _map_rules(rules: Any, convert) -> Any:
 def _convert_mock(mock: dict, convert) -> dict:
     result = dict(mock)
     result.pop("sequence", None)
+    result.pop("recording", None)
     for key in BODY_SECTIONS:
         if key in result:
             result[key] = convert(result[key])
@@ -98,6 +99,8 @@ def _convert_mock(mock: dict, convert) -> dict:
 async def export_snapshot(version: str) -> dict:
     """Build a snapshot of every configured mock."""
     storage = await mock_storage.get_storage()
+    if any(mock.get("recording") is not None for mock in storage.values()):
+        raise SnapshotError("Snapshot format 1 cannot represent recordings; format 2 support is pending", 409)
     if any(has_sequences(mock) for mock in storage.values()):
         raise SnapshotError("Snapshot format 1 cannot represent response sequences; format 2 support is pending", 409)
     return {
@@ -130,6 +133,8 @@ def parse_snapshot(snapshot: Any) -> list[dict]:
             raise SnapshotError(f"Mock #{index} must be a JSON object")
         if not mock.get("path"):
             raise SnapshotError(f"Mock #{index} has no 'path'")
+        if mock.get("recording") is not None:
+            raise SnapshotError("Record/replay is not supported by snapshot format 1")
         if has_sequences(mock):
             raise SnapshotError("Response sequences are not supported by snapshot format 1")
 

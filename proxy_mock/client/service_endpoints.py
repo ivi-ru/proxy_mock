@@ -12,3 +12,4 @@ class Endpoints(StrEnum):
     STORAGE = "/mocks"
     STORAGE_SNAPSHOT = "/snapshot"
     SEQUENCE_STATE = "/sequence-state"
+    RECORDINGS = "/recordings"

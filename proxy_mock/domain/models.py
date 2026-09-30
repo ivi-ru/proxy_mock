@@ -1,3 +1,4 @@
+import re
 import time
 from http import HTTPMethod
 from typing import Literal
@@ -21,6 +22,21 @@ class SequenceSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
     responses: list[MockDataSchema] = Field(min_length=1)
     on_exhaustion: Literal["repeat_last", "error"] = "repeat_last"
+
+
+class RecordingSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["record", "replay"]
+    match_headers: list[str] = Field(default_factory=list)
+    max_items: int = Field(100, strict=True, gt=0)
+    max_bytes: int = Field(10 * 1024 * 1024, strict=True, gt=0)
+
+    @field_validator("match_headers")
+    @classmethod
+    def validate_headers(cls, values):
+        if any(not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", value) for value in values):
+            raise ValueError("match_headers must contain HTTP header names")
+        return sorted({value.lower() for value in values})
 
 
 class RulesInputDataSchema(BaseModel):
@@ -64,6 +80,7 @@ class MockPathSchema(BaseModel):
     rules: list[MockRulesSchema] | None = Field(None)
     cache_time: int | None = Field(None)
     sequence: SequenceSchema | None = None
+    recording: RecordingSchema | None = None
 
 
 class ConfigureMockRequestSchema(MockPathSchema):

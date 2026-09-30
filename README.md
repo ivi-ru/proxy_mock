@@ -10,7 +10,8 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 [Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-> **3.0 development, not a release:** this checkout implements the new administrative REST API.
+> **3.0 development, not a release:** this checkout implements the administrative REST API,
+> response sequences and record/replay.
 > Its package version remains `2.13.0` until release preparation is complete. The HTTP reference
 > below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
 > Pin `proxy_mock>=2.13,<3` for the published compatible release. See
@@ -64,6 +65,7 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 - **Request proxying** to an upstream host (`proxy_host`)
 - **Endpoint mocking** with flexible response configuration
 - **Rules** for returning different responses on the same path
+- **Record/replay** with inspectable upstream replies and exact request matching (unreleased 3.0)
 - **Response sequences** for ordered replies on a mock or a matching rule (unreleased 3.0)
 - **Response delay** (`timeout`)
 - **Traffic capture** of incoming requests for later inspection
@@ -250,7 +252,7 @@ untouched; it is not JSON Merge Patch. Both accept the exported document. Invali
 are rejected before storage changes.
 
 The document still uses format 1 in this development step. Storage containing response
-sequences cannot be exported until format 2 is implemented; see [the transition note](#response-sequences).
+sequences or record/replay cannot be exported until format 2 is implemented; see [the transition note](#response-sequences).
 
 The format 1 document looks like this:
 
@@ -319,6 +321,8 @@ such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mo
 | `GET` | `/__admin/snapshot` | Export the format 1 snapshot document | `200` |
 | `PUT` | `/__admin/snapshot` | Replace all mocks from a snapshot | `200` |
 | `PATCH` | `/__admin/snapshot` | Merge a snapshot by mock path | `200` |
+| `GET` | `/__admin/recordings?path=%2Finventory` | Inspect recorded replies; optional `id` selects one entry | `200` |
+| `DELETE` | `/__admin/recordings?path=%2Finventory` | Delete that collection or one entry selected by `id` | `200` |
 | `GET` | `/__admin/sequence-state?path=%2Finventory` | Inspect a sequence cursor; optional zero-based `rule` index | `200` |
 | `PATCH` | `/__admin/sequence-state?path=%2Finventory` | Restart that sequence with `{"position": 0}` | `200` |
 | `DELETE` | `/__admin/cache` | Clear the deprecated response cache, pending its removal | `200` |
@@ -362,6 +366,7 @@ replaced in full: `{"rules": []}` removes all rules. Null is invalid for non-nul
 | `proxy_host` | `string` (**absolute URL**) | Proxy the request to this host |
 | `timeout` | `float` | Delay before responding, seconds |
 | `sequence` | `object \| null` | Ordered response definition; see below |
+| `recording` | `object \| null` | Explicit record/replay configuration; see below |
 | `cache_time` | `int` | Deprecated response cache lifetime, seconds; removal remains planned |
 | `rules` | `list[dict]` | Rules producing different responses on one path |
 
@@ -498,16 +503,103 @@ the separately planned format 2 work, exporting storage containing any sequence 
 and importing a format 1 document containing sequences returns `422`. Ordinary format 1
 snapshots still work. This prevents silent sequence loss; no cursor is serialized.
 
+## Record/replay
+
+Available in this unreleased checkout. Configure a mock with an upstream and explicit recording:
+
+```python
+proxy_mock.configure_mock(
+    "/inventory",
+    proxy_host="http://localhost:8000",
+    recording={"mode": "record", "match_headers": ["Accept"]},
+)
+# Each request reaches the upstream; its completed HTTP response is saved in memory.
+original = proxy_mock.execute_request("GET", "/inventory?sku=42", headers={"Accept": "application/json"})
+assert original.headers["X-Proxy-Mock-Recording"] == "stored"
+entries = proxy_mock.get_recordings("/inventory")["data"]
+
+# PATCH preserves completed recordings when the upstream and matching headers are unchanged.
+proxy_mock.patch_mock("/inventory", recording={"mode": "replay", "match_headers": ["Accept"]})
+replayed = proxy_mock.execute_request("GET", "/inventory?sku=42", headers={"Accept": "application/json"})
+assert replayed.content == original.content
+assert replayed.status_code == original.status_code
+proxy_mock.delete_recordings("/inventory", entries[0]["id"])
+```
+
+Both clients accept `recording=...` and expose `get_recordings(path, recording_id=None)` and
+`delete_recordings(path, recording_id=None)`. The administrative resource is
+`/__admin/recordings?path=<encoded-mock-path>`: `GET` reads the collection and `DELETE` clears it.
+An optional `id` selects a single entry. Missing configurations or entries return `404`;
+invalid, empty, repeated or unknown selectors return `422`. The `path` selector is required,
+so an invalid selector cannot clear every mock's recordings. Custom administrative prefixes
+apply to this resource too.
+
+`recording` is an object with these fields:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `mode` | Required | `record` proxies each request and stores the completed reply; `replay` serves saved replies without contacting the upstream |
+| `match_headers` | `[]` | Additional request header names to include in the matching key; names are case-insensitive, values remain exact |
+| `max_items` | `100` | Positive integer limiting retained entries per mock |
+| `max_bytes` | `10485760` | Positive integer limiting the sum of JSON-encoded entry sizes, including base64 bodies and metadata |
+
+Matching always uses the method, raw percent-encoded path, raw query string and exact body
+bytes. Query order, repeated keys, encoding and body whitespace matter. Selected header values
+retain their order; a missing header differs from an empty one. All other headers are ignored.
+The key is exposed as a stable SHA-256 `id`. Every entry contains `request` (method, path, query,
+selected headers and `body_b64`) and `response` (status code, ordered header pairs and `body_b64`).
+Bodies are base64 strings to preserve binary data in JSON. These entries contain test data,
+including any selected credentials and upstream cookies, and are readable through the same
+unauthenticated administrative API as traffic.
+
+HTTP replies, including redirects, `4xx` and `5xx`, are recorded. Redirects are not followed.
+Transport failures return the existing `502`/`504` errors without replacing a saved reply;
+allowlist and proxy-loop rejections are not recorded. Replay never falls back to proxying,
+rules or `mock_data`. A missing key returns `404` with
+`{"error": {"code": "recording_not_found", "message": "No recording matches this request"}}`.
+Saved replies can be replayed repeatedly without consumption. `HEAD` has its own key and keeps
+the upstream representation length. Bodies are captured after transport decompression;
+content encoding, ordinary content length and hop-by-hop headers are removed. Response length
+is regenerated, and repeated headers such as `Set-Cookie` are preserved.
+
+For a repeated key, the last completed recording replaces the earlier entry. Reads do not
+change eviction order. Limits evict the oldest writes first. A single entry larger than the
+byte budget is skipped while the upstream response is still returned and any earlier entry
+for that key remains available. Record-mode replies report `X-Proxy-Mock-Recording: stored`,
+`too_large` or `superseded`; this diagnostic header is not part of the saved reply. The byte
+budget bounds retained serialized data, not total process memory or bodies buffered in flight.
+
+Full mock `PUT` starts with an empty collection. `PATCH` preserves completed entries while
+`proxy_host` and normalized `match_headers` remain unchanged, including when switching modes
+or resizing limits; lowering limits immediately evicts excess entries. The `recording` object
+is replaced as a whole, so repeat any non-default settings in a PATCH. Changing the upstream
+or matching headers starts fresh. `recording: null`, mock deletion and clearing mocks discard
+the collection. Every mock update detaches pending recordings: their responses still reach
+the caller but cannot write into the new generation. A successful recording deletion also
+invalidates all pending writes for that mock, preventing a late response from undoing deletion.
+
+Record mode requires a mock-level `proxy_host`. Replay accepts it for later switching back to
+record mode, but does not use it. Record/replay rejects combinations with rules, response
+sequences or nonzero `cache_time` with `422`. Configured mock methods still apply; rejected
+methods and administrative requests never produce recordings. Static response and delay
+settings do not affect record/replay replies.
+
+**Snapshot transition:** until the separately planned format 2 step, exporting storage with
+record/replay returns `409`, and format 1 imports containing `recording` return `422` before
+changing any state. Ordinary format 1 snapshots remain supported. Recordings currently live
+only in process memory; do not use format 1 to transfer them.
+
 ## Catching requests on `/<path>`
 
 For any path that has a mock configured, the server processes the request in this order:
 
 1. Records the request in traffic.
 2. Checks the method, otherwise `405 Method Not Allowed`.
-3. Returns a cached response when `cache_time` is set and there is a cache hit.
-4. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
-5. Otherwise selects the first matching rule, or the default response. If it has a sequence, reserves its next entry before waiting.
-6. Applies `timeout` (and any matching rule delay), then serves the selected rule response, default sequence entry, or static `mock_data`. Exhausted `error` sequences return `409` immediately.
+3. If record/replay is configured, either serves a matching saved reply or proxies and records the response as described above.
+4. Returns a cached response when `cache_time` is set and there is a cache hit.
+5. When `proxy_host` is set, proxies to the upstream host and returns its response (proxying "to self" is aborted with `508`). If the host is unreachable or does not resolve — `502`; if it did not answer within `PROXY_MOCK_PROXY_TIMEOUT` — `504`. Failed responses are not cached.
+6. Otherwise selects the first matching rule, or the default response. If it has a sequence, reserves its next entry before waiting.
+7. Applies `timeout` (and any matching rule delay), then serves the selected rule response, default sequence entry, or static `mock_data`. Exhausted `error` sequences return `409` immediately.
 
 If no mock is configured for the path, the response is `404` with the body `{"error": "No mock found for /<path>"}`. By default such a request is recorded in traffic too (with `extra_info.status_code = 404`). Recording unknown traffic can be turned off with `PROXY_MOCK_RECORD_UNKNOWN_TRAFFIC=false` or at runtime via `PATCH /__admin/settings`.
 

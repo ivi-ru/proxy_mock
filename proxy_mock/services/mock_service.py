@@ -7,6 +7,7 @@ from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.core.deprecation import warn_deprecated_field
 from proxy_mock.core.serializers import convert_bytes_to_str
 from proxy_mock.repositories.mock_storage import mock_storage
+from proxy_mock.services.recordings import RecordingStore
 from proxy_mock.services.sequences import build_sequences
 from proxy_mock.utils import apply_mocks_factory
 
@@ -42,6 +43,9 @@ def remove_runtime_routes(app: FastAPI, path: str) -> None:
     """Remove the dynamically added routes of a mock (the path and its trailing-slash variant)."""
     candidates = _route_candidates(path)
     app.state.sequences.pop(normalize_path(path), None)
+    recordings = app.state.recordings.pop(normalize_path(path), None)
+    if recordings is not None:
+        recordings.retire()
     for route in list(app.routes):
         if getattr(route, "path", None) in candidates:
             app.routes.remove(route)
@@ -84,7 +88,9 @@ async def return_storage() -> dict:
     return storage
 
 
-async def mock_initialization(app: FastAPI, mock_data: dict, *, preserve_sequences: set | None = None):
+async def mock_initialization(
+    app: FastAPI, mock_data: dict, *, preserve_sequences: set | None = None, preserve_recordings: bool = False
+):
     mock_data["path"] = validate_mock_path(app, mock_data["path"])
     if mock_data.get("cache_time"):
         warn_deprecated_field("cache_time", "response caching is removed in 3.0")
@@ -93,11 +99,16 @@ async def mock_initialization(app: FastAPI, mock_data: dict, *, preserve_sequenc
 
     normalized_path = normalize_path(mock_data["path"])
     previous = app.state.sequences.get(normalized_path, {})
+    old_recordings = app.state.recordings.get(normalized_path) if preserve_recordings else None
     remove_runtime_routes(app, normalized_path)
 
+    recordings = None
+    if config := mock_data.get("recording"):
+        recordings = RecordingStore(config, old_recordings)
+        app.state.recordings[normalized_path] = recordings
     states = build_sequences(mock_data, previous, preserve_sequences or set())
     app.state.sequences[normalized_path] = states
-    handler = apply_mocks_factory(app, mock_data, states)
+    handler = apply_mocks_factory(app, mock_data, states, recordings)
     app.add_api_route(normalized_path, handler, methods=mock_data["methods"])
 
     if normalized_path != "/":

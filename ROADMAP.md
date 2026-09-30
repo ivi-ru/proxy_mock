@@ -164,6 +164,7 @@ justifies changing it.
 | `/__admin/traffic` | `GET`, `DELETE` | Read with filters, or clear all traffic without filters |
 | `/__admin/settings` | `GET`, `PATCH` | Read or partially update recording settings |
 | `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export, replace, or merge a format 1 snapshot |
+| `/__admin/recordings?path=<encoded-path>` | `GET`, `DELETE` | Inspect or delete recorded replies; optional `id` selects one |
 | `/__admin/sequence-state?path=<encoded-path>` | `GET`, `PATCH` | Inspect or restart a mock/rule sequence cursor |
 | `/__admin/cache` | `DELETE` | Clear the deprecated cache while its removal remains pending |
 
@@ -176,7 +177,7 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: record & replay, snapshot evolution,
+The following steps are still pending: snapshot evolution,
 cache removal, client transport unification, the installation split, and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
@@ -189,9 +190,17 @@ about what was recorded and lets you look at it.
 
 ### Record & replay
 
-Required for 3.0: proxy a request to the real upstream and store its response as a mock that
-can be inspected and replayed. This makes recording explicit and replaces the useful proxied
-response use case of the removed cache.
+Implemented locally: mock-level `recording` configuration explicitly selects `record` or
+`replay`. Recorded replies are inspectable and removable through the REST recording resource.
+Exact matching uses method, raw path/query and body bytes, with optional selected headers.
+Replay never contacts the upstream; missing keys return `404`. Collections are bounded by
+count and serialized bytes, and repeated keys keep the last completed reply. Transport
+failures are excluded; upstream HTTP errors and binary replies are retained. This replaces
+the useful proxied response use case of the cache planned for removal.
+
+Recordings are in memory; their snapshot representation awaits the separate format 2 step.
+Format 1 import/export rejects record/replay explicitly. See the
+[record/replay contract](README.md#recordreplay).
 
 ### Response sequences
 

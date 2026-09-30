@@ -17,6 +17,7 @@ from proxy_mock.services.proxy_service import (
     is_proxy_loop,
     proxy_request_to_host,
 )
+from proxy_mock.services.recordings import RecordingStore, recorded_response, response_headers
 from proxy_mock.services.response_factory import make_response
 from proxy_mock.services.rule_engine import apply_rules
 from proxy_mock.services.sequences import ResponseSequence, SequenceExhausted
@@ -64,7 +65,12 @@ def log_request(func):
     return wrapper
 
 
-def apply_mocks_factory(app: FastAPI, mock_data: dict, sequences: dict[int | None, ResponseSequence] | None = None):
+def apply_mocks_factory(
+    app: FastAPI,
+    mock_data: dict,
+    sequences: dict[int | None, ResponseSequence] | None = None,
+    recordings: RecordingStore | None = None,
+):
     sequences = sequences or {}
 
     async def apply_mocks(request: Request):
@@ -83,6 +89,17 @@ def apply_mocks_factory(app: FastAPI, mock_data: dict, sequences: dict[int | Non
         allowed_methods = [str(m).upper() for m in (mock_data.get("methods") or [])]
         if allowed_methods and request.method.upper() not in allowed_methods:
             return JSONResponse({"error": f"Method {request.method} not allowed"}, status_code=405)
+
+        recording_key = recording_request = recording_revision = None
+        if recordings is not None:
+            recording_key, recording_request, recording_revision = await recordings.identify(request)
+            if mock_data["recording"]["mode"] == "replay":
+                entry = await recordings.read(recording_key)
+                if entry is None:
+                    return JSONResponse(
+                        {"error": {"code": "recording_not_found", "message": "No recording matches this request"}}, 404
+                    )
+                return recorded_response(entry["response"])
 
         # cache
         cache_time = mock_data.get("cache_time")
@@ -107,6 +124,20 @@ def apply_mocks_factory(app: FastAPI, mock_data: dict, sequences: dict[int | Non
                 # An unreachable host is no reason to cache the response or to return 500.
                 logger.error(err.detail)
                 return JSONResponse({"error": err.detail}, status_code=err.code)
+
+            if recordings is not None:
+                outcome = await recordings.save(recording_key, recording_request, proxy_response, recording_revision)
+                response = Response(proxy_response.content, proxy_response.status_code)
+                if request.method == "HEAD":
+                    response.raw_headers = []
+                response.raw_headers.extend(
+                    (name.encode("latin-1"), value.encode("latin-1"))
+                    for name, value in response_headers(
+                        proxy_response.headers, preserve_length=request.method == "HEAD"
+                    )
+                )
+                response.headers["X-Proxy-Mock-Recording"] = outcome
+                return response
 
             response = Response(
                 proxy_response.content,

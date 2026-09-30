@@ -33,6 +33,17 @@ remaining 3.0 roadmap items are still pending.
   transition, exporting sequences returns `409` and format 1 imports containing them return
   `422`, preventing silent loss until format 2 support is implemented.
 
+* Added explicit mock-level record/replay. Record mode proxies every request and stores the
+  last completed HTTP reply per exact method/path/query/body key, with optional selected
+  headers. Replay returns the saved reply without upstream access; missing entries return
+  `404`. Transport failures are not recorded, while upstream HTTP errors are.
+* Added `GET` and `DELETE /__admin/recordings` with required mock path and optional entry id,
+  plus both client helpers. Binary bodies, repeated response headers, redirects, decompressed
+  payloads and HEAD representation lengths are supported.
+* Recording collections have configurable entry and byte limits. Late responses cannot
+  restore deleted recordings or mutate a replaced mock generation. Snapshot format 1 rejects
+  record/replay explicitly pending the separate format 2 step.
+
 Version 2.13.0
 ==============
 

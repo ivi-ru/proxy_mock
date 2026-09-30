@@ -154,7 +154,19 @@ async def patch_mock(request: Request, path: str = Query(..., min_length=1)):
             preserve.add(None)
         if "rules" not in changes:
             preserve.update(range(len(value.get("rules") or [])))
-        result = await mock_initialization(request.app.state.mock_app, value, preserve_sequences=preserve)
+        old_recording, new_recording = saved.get("recording"), value.get("recording")
+        preserve_recordings = bool(
+            old_recording
+            and new_recording
+            and old_recording["match_headers"] == new_recording["match_headers"]
+            and saved.get("proxy_host") == value.get("proxy_host")
+        )
+        result = await mock_initialization(
+            request.app.state.mock_app,
+            value,
+            preserve_sequences=preserve,
+            preserve_recordings=preserve_recordings,
+        )
     return JSONResponse(result)
 
 
@@ -291,3 +303,25 @@ async def delete_cache(request: Request):
     check_query(request, set())
     await request.app.state.cache.clear()
     return {"success": True}
+
+
+@router.get("/recordings", response_model=DataResponse)
+@router.delete("/recordings", response_model=DataResponse)
+async def recordings(
+    request: Request, path: str = Query(..., min_length=1), id: str | None = Query(None, pattern=r"^[0-9a-f]{64}$")
+):
+    """Read or delete a mock's recording collection, or one entry selected by its id."""
+    check_query(request, {"path", "id"})
+    identity = selected_path(path, required=True)
+    async with request.app.state.admin_lock:
+        store = request.app.state.recordings.get(identity)
+        if store is None:
+            raise api_error(404, "recordings_not_found", "No record/replay configuration found for this mock")
+        if request.method == "DELETE":
+            if not await store.delete(id):
+                raise api_error(404, "recording_not_found", "No recording found for this id")
+            return {"success": True, "data": []}
+        data = await store.read(id)
+        if data is None:
+            raise api_error(404, "recording_not_found", "No recording found for this id")
+        return {"success": True, "data": data}

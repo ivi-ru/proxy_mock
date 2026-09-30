@@ -64,6 +64,7 @@ class ProxyMockApp(FastAPI):
         self.state.traffic_store = TrafficStore()
         self.state.admin_lock = asyncio.Lock()
         self.state.sequences = {}
+        self.state.recordings = {}
         # Settings belong to the instance and may change without a restart.
         self.state.record_unknown_traffic = record_unknown_traffic_default()
         # Filled in by the CLI when it is given --mocks; applied during startup.

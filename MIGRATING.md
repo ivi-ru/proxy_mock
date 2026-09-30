@@ -1,11 +1,11 @@
 # Migrating from 2.x to 3.0
 
-**3.0 is in development, not released.** This checkout implements its administrative REST API
-and response sequences; package version metadata remains `2.13.0` until the final release-preparation step. Published
-2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
+**3.0 is in development, not released.** This checkout implements its administrative REST API,
+response sequences and record/replay; package version metadata remains `2.13.0` until the final
+release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Record & replay, snapshot evolution, cache removal, transport unification and the client/server
+Snapshot evolution, cache removal, transport unification and the client/server
 installation split remain later steps. They are not implemented by this checkout.
 
 ## Administrative REST API in this checkout
@@ -129,6 +129,27 @@ opt-in prefix is `/__admin`.
 The synchronous client still uses `requests`; changing transports and installation extras is
 separate work. Deprecated caching also remains in this step, with cleanup at
 `DELETE /__admin/cache`. Do not depend on that resource in new tests: cache removal is planned for 3.0.
+
+## Record/replay in this checkout
+
+Record/replay is explicit: configure `recording: {"mode": "record"}` with a mock-level
+`proxy_host`, then switch with `PATCH` to `recording: {"mode": "replay"}`. This preserves
+completed replies while upstream and `match_headers` remain unchanged. Repeat non-default
+recording settings when switching; the object is replaced in full. Both clients accept
+`recording=...`, `get_recordings()` and `delete_recordings()`.
+
+`GET` and `DELETE /__admin/recordings?path=...` inspect and clear a mock's recorded replies;
+an optional `id` selects one entry. Modes belong to the mock resource rather than action
+endpoints. Matching uses method, raw path/query and exact body bytes, optionally selected
+headers. Replay does not contact the upstream and returns `404` on a missing key. Completed
+HTTP errors are recorded; transport errors are not. Collections have configurable count and
+byte limits, and record-mode responses report whether storage succeeded through
+`X-Proxy-Mock-Recording`. See the [full contract](README.md#recordreplay), including lifecycle,
+concurrent requests, binary bodies and repeated headers.
+
+Recordings have no format 1 representation. Export returns `409` for storage containing
+record/replay; format 1 imports with `recording` return `422` atomically. Their persistence
+belongs to the separate format 2 step. Published 2.13 has no record/replay API.
 
 ## Response sequences in this checkout
 
@@ -267,9 +288,9 @@ available in 2.x. Only one worker is supported because storage is in process mem
 `cache_time`, `clean_cache()` and the cache resource will be removed. The old action-style
 `POST /cache/clean` is already gone in this checkout; temporary cleanup uses `DELETE /__admin/cache`. Remove caching from static
 mocks now; their configured response already remains available until the mock is changed or
-removed. For cached upstream responses, stay on 2.x until record & replay is available, then
-explicitly record a response as a mock and replay it. There is no record & replay API in published 2.13 or this checkout yet.
+removed. For cached upstream responses, use the explicit record/replay configuration described
+above in this checkout. Published 2.13 retains caching and has no record/replay API.
 
-Record & replay remains required for 3.0. Ordered response sequences are implemented in this
-checkout as documented above; their snapshot support awaits format 2.
+Record/replay and ordered response sequences are implemented in this checkout as documented
+above; their snapshot support awaits format 2.
 gRPC and an authentication token are outside the 3.0 scope.

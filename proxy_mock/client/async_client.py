@@ -110,6 +110,7 @@ class AsyncProxyMock:
         methods: list[str] | None = None,
         cache_time: int | None = None,
         sequence: dict | None = None,
+        recording: dict | None = None,
         include_none: bool = False,
         **kwargs,
     ) -> dict:
@@ -145,6 +146,9 @@ class AsyncProxyMock:
         if sequence is not _UNSET and (include_none or sequence is not None):
             request_data["sequence"] = sequence
 
+        if recording is not _UNSET and (include_none or recording is not None):
+            request_data["recording"] = recording
+
         request_data.update(kwargs)
         return request_data
 
@@ -175,6 +179,7 @@ class AsyncProxyMock:
         methods: list[str] | None = None,
         cache_time: int | None = None,
         sequence: dict | None = None,
+        recording: dict | None = None,
         **kwargs,
     ):
         payload = self._build_mock_request_data(
@@ -189,6 +194,7 @@ class AsyncProxyMock:
             methods=methods,
             cache_time=cache_time,
             sequence=sequence,
+            recording=recording,
             **kwargs,
         )
         return await self._send_configure(HTTPMethod.PUT, payload)
@@ -206,6 +212,7 @@ class AsyncProxyMock:
         methods: list[str] | None = _UNSET,
         cache_time: int | None = _UNSET,
         sequence: dict | None = _UNSET,
+        recording: dict | None = _UNSET,
         **kwargs,
     ):
         payload = self._build_mock_request_data(
@@ -220,6 +227,7 @@ class AsyncProxyMock:
             methods=methods,
             cache_time=cache_time,
             sequence=sequence,
+            recording=recording,
             include_none=True,
             **kwargs,
         )
@@ -315,3 +323,19 @@ class AsyncProxyMock:
         return await self.execute_request_and_get_response_body(
             HTTPMethod.DELETE, self._service_endpoint(Endpoints.CACHE_CLEAN)
         )
+
+    async def get_recordings(self, path: str, recording_id: str | None = None) -> dict:
+        """Inspect recorded requests and responses; binary bodies are base64 strings."""
+        query = {"path": normalize_mock_path(path)}
+        if recording_id is not None:
+            query["id"] = recording_id
+        route = f"{self._service_endpoint(Endpoints.RECORDINGS)}?{urlencode(query)}"
+        return await self.execute_request_and_get_response_body(HTTPMethod.GET, route)
+
+    async def delete_recordings(self, path: str, recording_id: str | None = None) -> dict:
+        """Delete one recorded response or the entire collection belonging to a mock."""
+        query = {"path": normalize_mock_path(path)}
+        if recording_id is not None:
+            query["id"] = recording_id
+        route = f"{self._service_endpoint(Endpoints.RECORDINGS)}?{urlencode(query)}"
+        return await self.execute_request_and_get_response_body(HTTPMethod.DELETE, route)

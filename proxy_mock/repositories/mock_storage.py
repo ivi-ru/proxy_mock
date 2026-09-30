@@ -31,6 +31,7 @@ class MockStorage:
         rules: list[dict],
         cache_time: int,
         sequence: dict | None = None,
+        recording: dict | None = None,
     ) -> dict:
         normalized_path = _normalize_path(path)
 
@@ -43,6 +44,7 @@ class MockStorage:
             rules=rules,
             cache_time=cache_time,
             sequence=sequence,
+            recording=recording,
         ).model_dump()
         payload["path"] = normalized_path
 
