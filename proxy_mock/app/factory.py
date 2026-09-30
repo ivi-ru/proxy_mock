@@ -14,6 +14,7 @@ from proxy_mock.api.routes.admin import router as admin_router
 from proxy_mock.client.migration import validate_admin_prefix
 from proxy_mock.core.logging import app_logger
 from proxy_mock.core.settings import get_version_from_pyproject, record_unknown_traffic_default
+from proxy_mock.repositories.mock_storage import MockStorage
 from proxy_mock.repositories.traffic_store import TrafficStore
 from proxy_mock.services.snapshot import import_snapshot
 from proxy_mock.services.traffic_service import new_traffic_data
@@ -58,6 +59,7 @@ class ProxyMockApp(FastAPI):
         kwargs.setdefault("lifespan", app_lifespan)
         super().__init__(*args, **kwargs)
 
+        self.state.mock_storage = MockStorage()
         self.state.traffic_store = TrafficStore()
         self.state.admin_lock = asyncio.Lock()
         self.state.sequences = {}

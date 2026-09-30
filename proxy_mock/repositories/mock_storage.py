@@ -73,6 +73,3 @@ class MockStorage:
         normalized_path = _normalize_path(path)
         async with self._lock:
             return self._storage.pop(normalized_path, None) is not None
-
-
-mock_storage = MockStorage()

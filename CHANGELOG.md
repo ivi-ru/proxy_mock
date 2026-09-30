@@ -8,6 +8,9 @@ Prepared locally as version 3.0.0. This release has not been published.
 * HEAD record/replay preserves absent representation lengths instead of inventing zero.
   Compressed HEAD lengths are omitted when their content encoding is removed; ordinary
   HEAD lengths and empty GET responses retain their existing behavior.
+* Each application owns its mock storage alongside routes, recordings and sequence cursors.
+  Recreating an application starts empty, and configuring, clearing or importing mocks in
+  another application no longer leaks state or breaks snapshot export.
 
 * **Breaking: administrative REST API.** The configurable administrative namespace defaults
   to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are

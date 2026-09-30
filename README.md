@@ -216,6 +216,10 @@ Only a single worker is supported — mocks and captured traffic live in the mem
 process, so a second worker would answer from an empty storage. `--workers 2` is refused with
 that explanation rather than starting a service that lies every other call.
 
+When embedding the server, each call to `proxy_mock.app:create_app()` creates an independent
+application with empty mock and traffic storage. Its routes, recordings and sequence cursors
+belong to that application; clearing or importing mocks in another application does not affect it.
+
 #### Fixtures for pytest
 
 The package registers a pytest plugin, so the fixtures are available as soon as it is installed

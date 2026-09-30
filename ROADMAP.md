@@ -263,8 +263,14 @@ Completed on macOS on 2026-09-30 for the unreleased 3.0.0 package:
 | Clean base/server wheel installs, examples and README quick start | 28 checks passed outside the source tree |
 | Docker image and Compose storefront | Built and served version 3.0.0; container-to-container request and captured traffic verified |
 
-The temporary Compose containers and network were removed. No push, Git tag, publication or
-release was performed. Publishing remains the maintainer procedure in CONTRIBUTING.md.
+Additional binary validation, HEAD metadata and application isolation regressions brought the
+suite to 668 tests. All passed on macOS with locked and lowest compatible dependencies;
+coverage remained 98%. The rebuilt wheel also passed the 28 isolated installation and example
+checks above.
+
+The temporary Compose containers and network were removed. Local validation created no Git
+tags, published packages or releases. Publishing remains the maintainer procedure in
+CONTRIBUTING.md.
 
 ---
 

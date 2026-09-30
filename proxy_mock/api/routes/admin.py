@@ -103,7 +103,7 @@ async def service_info(request: Request):
         "success": True,
         "version": state.version,
         "python_version": platform.python_version(),
-        "mocks_count": await count_mocks(),
+        "mocks_count": await count_mocks(state.mock_app),
         "traffic_count": await state.traffic_store.count(),
         "traffic_max_items": state.traffic_store.max_items,
     }
@@ -114,7 +114,8 @@ async def get_mocks(request: Request, path: str | None = PATH_QUERY):
     check_query(request, {"path"})
     identity = selected_path(path)
     async with request.app.state.admin_lock:
-        data = await return_storage() if identity is None else await return_mock_data(identity)
+        app = request.app.state.mock_app
+        data = await return_storage(app) if identity is None else await return_mock_data(app, identity)
     if data is None:
         raise api_error(404, "mock_not_found", f"No mock found for {identity}")
     return JSONResponse({"success": True, "data": convert_bytes_to_str(data)})
@@ -130,7 +131,7 @@ async def put_mock(request: Request, path: str = Query(..., min_length=1)):
     identity, data = await mock_payload(request, path)
     value = validate_mock(request, data)
     async with request.app.state.admin_lock:
-        existed = await return_mock_data(identity) is not None
+        existed = await return_mock_data(request.app.state.mock_app, identity) is not None
         result = await mock_initialization(request.app.state.mock_app, value)
     location = request.scope.get("root_path", "") + request.app.state.admin_prefix + "/mocks?"
     location += urlencode({"path": identity})
@@ -141,7 +142,7 @@ async def put_mock(request: Request, path: str = Query(..., min_length=1)):
 async def patch_mock(request: Request, path: str = Query(..., min_length=1)):
     identity, changes = await mock_payload(request, path)
     async with request.app.state.admin_lock:
-        saved = await return_mock_data(identity)
+        saved = await return_mock_data(request.app.state.mock_app, identity)
         if saved is None:
             raise api_error(404, "mock_not_found", f"No mock found for {identity}")
         # Bodies, headers and arrays are values, not recursive merge documents.
@@ -183,10 +184,10 @@ async def delete_mocks(request: Request, path: str | None = PATH_QUERY):
         if identity is None:
             await cleanup_storage(app)
         else:
-            if not await delete_mock_data(identity):
+            if not await delete_mock_data(app, identity):
                 raise api_error(404, "mock_not_found", f"No mock found for {identity}")
             remove_runtime_routes(app, identity)
-        data = await return_storage()
+        data = await return_storage(app)
     return JSONResponse({"success": True, "data": convert_bytes_to_str(data)})
 
 

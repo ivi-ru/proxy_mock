@@ -16,7 +16,6 @@ from proxy_mock.api.errors import safe_error_data
 from proxy_mock.api.schemas import MockResource
 from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.domain.models import RecordingEntry
-from proxy_mock.repositories.mock_storage import mock_storage
 from proxy_mock.services.mock_service import cleanup_storage, mock_initialization, validate_mock_path
 from proxy_mock.services.recordings import recording_id, recording_size
 
@@ -105,7 +104,7 @@ def _convert_mock(mock: dict, convert) -> dict:
 
 async def export_snapshot(app: FastAPI) -> dict:
     """Export mock configuration and each recording collection in oldest-write order."""
-    storage = await mock_storage.get_storage()
+    storage = await app.state.mock_storage.get_storage()
     mocks = []
     for mock in storage.values():
         value = _convert_mock(mock, _encode_section)
