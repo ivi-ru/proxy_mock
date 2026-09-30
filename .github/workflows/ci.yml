@@ -47,10 +47,10 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --locked --python ${{ matrix.python-version }}
+        run: uv sync --locked --extra server --python ${{ matrix.python-version }}
 
       - name: pytest
-        run: uv run --python ${{ matrix.python-version }} pytest --cov -v
+        run: uv run --extra server --python ${{ matrix.python-version }} pytest --cov -v
 
   lowest-bounds:
     # The declared lower bounds are a promise to anyone installing proxy-mock into an existing
@@ -68,7 +68,7 @@ jobs:
         run: |
           uv venv --python 3.11 .venv-lowest
           uv pip install --python .venv-lowest --resolution lowest-direct \
-            . "pytest>=9.0.3,<10" "pytest-cov>=7.0.0,<8"
+            ".[server]" "pytest>=9.0.3,<10" "pytest-cov>=7.0.0,<8"
 
       - name: Report what was resolved
         run: uv pip list --python .venv-lowest
@@ -94,7 +94,21 @@ jobs:
       - name: Install the wheel into a clean environment
         run: |
           python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet dist/*.whl pytest
+          for wheel_path in dist/*.whl; do
+            "$RUNNER_TEMP/venv/bin/pip" install --quiet "${wheel_path}[server]" pytest
+          done
+
+      - name: Install only the clients into another clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/venv-client"
+          "$RUNNER_TEMP/venv-client/bin/pip" install --quiet dist/*.whl pytest
+
+      - name: Verify the base install against an external server
+        run: |
+          cp .github/smoke/test_installed_clients.py "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          PROXY_MOCK_SERVER_PYTHON="$RUNNER_TEMP/venv/bin/python" \
+            ./venv-client/bin/pytest -q test_installed_clients.py
 
       - name: Run the smoke test outside the repository
         run: |

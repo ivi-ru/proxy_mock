@@ -25,9 +25,12 @@ calling the application. These examples call that URL directly so they can run o
 ## Run from this repository
 
 ```bash
-uv sync --locked
-uv run pytest -q examples/test_http_dependency.py
+uv sync --locked --extra server
+uv run --extra server pytest -q examples/test_http_dependency.py
 ```
+
+For a 3.0 installation, local fixtures require `proxy_mock[server]`. The base install can
+use an external instance with `PROXY_MOCK_URL`; published 2.x includes the server by default.
 
 CI also copies the examples outside the repository and runs them against the built wheel. This
 checks that the public package and its registered fixtures are sufficient to run the examples.

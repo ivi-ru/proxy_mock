@@ -5,8 +5,8 @@ response sequences and record/replay; package version metadata remains `2.13.0` 
 release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Both clients now use `httpx2` as described below. The client/server installation split
-remains a later step; this checkout still installs the server by default.
+Both clients now use `httpx2`. The base install contains clients; the optional `server` extra
+provides dependencies for a local server as described below.
 
 ## Administrative REST API in this checkout
 
@@ -351,12 +351,39 @@ unless overridden per request. A wrapper-created native client is closed by `clo
 `aclose()` or context exit, including exceptional exit. An injected client is borrowed:
 the caller closes it. Passing the wrong native client type raises `TypeError`.
 
-## Remaining 3.0 work: installation and startup
+## Installation and startup in this checkout
 
-The planned base install, `proxy_mock`, contains only clients; use `proxy_mock[server]` when
-running the server, CLI or the pytest fixture that starts a local server. **Do not use this
-extra as a migration step yet: published 2.13 and this checkout still install the server
-by default.**
+The base install, `proxy_mock`, depends only on `httpx2` and `msgpack`. Server source files
+still ship in the same wheel, but FastAPI, Pydantic and uvicorn move to `proxy_mock[server]`.
+Their version bounds are unchanged. Use the extra to run the server, embed `create_app()`,
+validate snapshots with the CLI or start a local instance through pytest fixtures.
+
+**3.0 is not released.** To try these contracts from the checkout:
+
+```sh
+python -m pip install .                 # clients talking to an existing server
+python -m pip install '.[server]'       # local server
+uv sync --locked --extra server         # development and tests
+```
+
+After 3.0 is released, replace the local paths with `proxy_mock` or `proxy_mock[server]`.
+Published 2.13 has no server extra and continues to install server dependencies by default.
+For the 3.0 CLI in an isolated environment, use
+`uvx --from 'proxy_mock[server]' proxy-mock` or
+`pipx run --spec 'proxy_mock[server]' proxy-mock`.
+
+A base-only environment supports both clients, snapshot export/import against a running
+server, pytest auto-loading and fixtures using `PROXY_MOCK_URL`. It does not need server
+packages even if unrelated pytest tests never use the plugin. `proxy-mock --help` and
+`--version` (also through `python -m proxy_mock`) work without the extra. Attempting local
+startup, importing the app factory or using local pytest fixtures gives an installation hint
+for `proxy_mock[server]`. The CLI exits with code 2 without a traceback. Installing an extra
+resolves dependencies; it does not change HTTP routes or choose a different wheel.
+
+`make install` includes the extra. When using uv directly, include `--extra server` in both
+`uv sync` and `uv run` commands for server work; plain `uv run` can remove optional packages
+from the project environment. Docker and the server checks in CI select the extra explicitly.
+
 Switch existing uvicorn entry points from `proxy_mock.any_catcher:app` to the supported factory
 `uvicorn proxy_mock.app:create_app --factory`, or use the `proxy-mock` console command already
 available in 2.x. Only one worker is supported because storage is in process memory.

@@ -18,7 +18,7 @@ remaining 3.0 roadmap items are still pending.
   `PUT` replaces and `PATCH` merges complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
   use `GET` and `PATCH /__admin/settings`. Invalid traffic filters return `422`.
 * The Python clients and pytest fixtures use the administrative API. Both clients now use
-  httpx2; package installation still includes the server. Response caching is removed.
+  httpx2; local server dependencies require the server extra. Response caching is removed.
 * Updated the HTTP reference and migration guide, keeping the released 2.13 alias behavior
   separate from the unreleased contract.
 
@@ -74,6 +74,15 @@ remaining 3.0 roadmap items are still pending.
   timeouts override the wrapper constructor timeout, including `None` to disable them.
 * Removed requests and its exclusive dependencies from the package and lockfile. Updated
   examples, migration instructions and installed-wheel checks for the native response contract.
+
+* **Breaking: optional server dependencies.** The base `proxy_mock` install depends only on
+  httpx2 and msgpack. Use `proxy_mock[server]` for local server startup, the app factory and
+  local pytest fixtures; FastAPI, Pydantic and uvicorn retain their existing bounds.
+* Base-only environments support both clients and pytest fixtures using `PROXY_MOCK_URL`.
+  CLI help/version do not import server packages; local startup reports how to install the
+  extra, with exit code 2 and no traceback. Server code still ships in the same wheel.
+* Development instructions, Docker and server CI checks select the extra explicitly. Added
+  isolated base/server wheel checks, including clients and fixtures against an external server.
 
 Version 2.13.0
 ==============

@@ -176,7 +176,7 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: the installation split and final release checks.
+The following steps are still pending: documentation/integration completion and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
@@ -229,10 +229,12 @@ remains available in published 2.x.
 
 ### Install split
 
-The base install becomes the clients only; the server moves behind an
-extra, `proxy_mock[server]`. Exact distribution counts will be measured at release time.
-A project that installs proxy-mock to talk to a running
-instance stops inheriting FastAPI, uvicorn and their constraints.
+Implemented locally: the base install depends on `httpx2` and `msgpack`, while
+`proxy_mock[server]` adds FastAPI, Pydantic and uvicorn with unchanged bounds. The same wheel
+ships both clients and server code. External pytest fixtures and CLI help/version work with
+the base install; local startup gives an installation hint when dependencies are missing.
+Exact distribution counts will be measured at release time. A project that talks to a running
+instance no longer inherits the server dependencies and their constraints.
 
 ### Entry point
 

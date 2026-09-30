@@ -19,7 +19,7 @@ COPY pyproject.toml uv.lock ./
 
 # IMPORTANT: a venv cannot be moved to a different path, because console scripts hardcode the
 # absolute interpreter path in their shebang. So the final stage copies the venv to the SAME path.
-RUN UV_PROJECT_ENVIRONMENT=/opt/venv-main uv sync --locked --no-install-project --no-dev
+RUN UV_PROJECT_ENVIRONMENT=/opt/venv-main uv sync --locked --extra server --no-install-project --no-dev
 
 # --- Final slim server image ---
 FROM base AS runtime

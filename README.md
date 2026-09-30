@@ -11,7 +11,7 @@ It suits automated tests, integration scenarios and local debugging of service-t
 [Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
 > **3.0 development, not a release:** this checkout implements the administrative REST API,
-> response sequences, record/replay and unified Python clients using `httpx2`.
+> response sequences, record/replay, unified Python clients using `httpx2`, and the `server` extra.
 > Its package version remains `2.13.0` until release preparation is complete. The HTTP reference
 > below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
 > Pin `proxy_mock>=2.13,<3` for the published compatible release. See
@@ -118,11 +118,14 @@ gunicorn. The full history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## 🚀 Getting started
 
-The shortest path is one command, with nothing installed permanently:
+The 3.0 server requires the `server` extra. When installing this checkout use
+`pip install '.[server]'`; package-index commands below apply when 3.0 is released.
+Published 2.x includes the server by default. The shortest path after release is one command,
+with nothing installed permanently:
 
 ```bash
-uvx proxy-mock --port 5000          # with uv
-pipx run proxy-mock --port 5000     # with pipx
+uvx --from 'proxy_mock[server]' proxy-mock --port 5000
+pipx run --spec 'proxy_mock[server]' proxy-mock --port 5000
 ```
 
 There are three ways to run proxy-mock:
@@ -144,12 +147,12 @@ Make sure the following are installed:
 
     Create a virtual environment and install everything, including the dev group:
     ```bash
-    uv sync
+    uv sync --extra server
     ```
 
 2. **Activate the virtual environment**
 
-    Activate the generated `.venv` (or prefix commands with `uv run`):
+    Activate the generated `.venv` (or prefix commands with `uv run --extra server`):
     ```bash
     source .venv/bin/activate
     ```
@@ -192,10 +195,12 @@ Once it is up, the service listens on `http://localhost:5000`.
 
 ### 🐍 Running without Docker (as a pip package)
 
-Docker is not required for automated tests: proxy-mock is published as an ordinary Python package containing the server, both clients and a pytest plugin.
+Docker is not required for automated tests. The 3.0 base install contains both clients and a
+pytest plugin for external instances; the `server` extra supplies local server dependencies.
+The wheel includes the server code in both cases.
 
 ```bash
-pip install proxy_mock
+pip install 'proxy_mock[server]'
 proxy-mock --port 5000
 ```
 
@@ -209,7 +214,8 @@ that explanation rather than starting a service that lies every other call.
 #### Fixtures for pytest
 
 The package registers a pytest plugin, so the fixtures are available as soon as it is installed
-— no `conftest.py` boilerplate. The [quick start](#quick-start) is a complete test that configures
+— no `conftest.py` boilerplate. Starting a local instance requires the `server` extra. A base
+install is sufficient when `PROXY_MOCK_URL` points at an existing instance. The [quick start](#quick-start) is a complete test that configures
 a response, makes an HTTP request, and verifies the captured traffic.
 
 | Fixture | Scope | What it gives |
@@ -307,7 +313,10 @@ Published 2.x keeps the previous synchronous response type and redirect behavior
 **Requirements and limitations:**
 
 - Python **>= 3.11** in the test environment; on older interpreters pip will not find an installable version.
-- The package pulls server dependencies (`fastapi>=0.137`, `pydantic>=2.6`, `uvicorn`, `httpx2`). If your test project pins older versions, the resolver may conflict. In that case install proxy-mock into a separate environment (`uv tool install` / `pipx`) and run it as a subprocess.
+- The base install depends on `httpx2` and `msgpack`. Only `proxy_mock[server]` adds
+  `fastapi>=0.137`, `pydantic>=2.6` and `uvicorn>=0.27`; their bounds are unchanged.
+  If they conflict with your application, run the server in a separate environment and use
+  the base install with `PROXY_MOCK_URL` in the test environment.
 - Under parallel runs (pytest-xdist) every worker starts its own instance: the mock and traffic stores belong to a process.
 
 ### Environment variables

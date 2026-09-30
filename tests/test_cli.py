@@ -148,3 +148,11 @@ def test_cli_rejects_invalid_format_two_before_startup(tmp_path, capsys, mock):
     snapshot_file.write_text(json.dumps({"format": 2, "mocks": [mock]}), encoding="utf-8")
     assert main(["--mocks", str(snapshot_file)]) == 2
     assert "not a valid snapshot" in capsys.readouterr().err
+
+
+def test_missing_server_dependencies_are_reported_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr("proxy_mock._server.find_spec", lambda name: None)
+    assert main([]) == 2
+    message = capsys.readouterr().err
+    assert "pip install 'proxy_mock[server]'" in message
+    assert "Traceback" not in message

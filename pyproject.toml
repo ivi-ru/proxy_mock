@@ -25,10 +25,14 @@ classifiers = [
 ]
 dependencies = [
     "httpx2>=2.0.0,<3.0.0",
+    "msgpack>=1.0.4,<2.0.0",
+]
+
+[project.optional-dependencies]
+server = [
     "pydantic>=2.6.0,<3.0.0",
     "fastapi>=0.137.0",
     "uvicorn>=0.27.0",
-    "msgpack>=1.0.4,<2.0.0",
 ]
 
 [project.scripts]
