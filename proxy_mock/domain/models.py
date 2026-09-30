@@ -1,3 +1,5 @@
+import base64
+import binascii
 import re
 import time
 from http import HTTPMethod
@@ -37,6 +39,71 @@ class RecordingSchema(BaseModel):
         if any(not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", value) for value in values):
             raise ValueError("match_headers must contain HTTP header names")
         return sorted({value.lower() for value in values})
+
+
+class RecordedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    method: str
+    path: str
+    query: str
+    body_b64: str
+    headers: dict[str, list[str]]
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, value):
+        if value not in {method.value for method in HTTPMethod}:
+            raise ValueError("Unknown request method")
+        return value
+
+    @field_validator("path", "query")
+    @classmethod
+    def validate_target(cls, value, info):
+        if any(ord(char) < 33 or ord(char) > 126 for char in value) or "#" in value:
+            raise ValueError("Recorded target must use raw ASCII URL encoding")
+        if info.field_name == "path" and (not value.startswith("/") or "?" in value):
+            raise ValueError("Recorded path must be absolute and contain no query")
+        return value
+
+    @field_validator("body_b64")
+    @classmethod
+    def validate_body(cls, value):
+        try:
+            decoded = base64.b64decode(value, validate=True)
+        except (ValueError, binascii.Error) as err:
+            raise ValueError("Recorded body must be valid base64") from err
+        if base64.b64encode(decoded).decode("ascii") != value:
+            raise ValueError("Recorded body must use canonical base64")
+        return value
+
+
+class RecordedReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    status_code: int = Field(ge=200, le=599)
+    headers: list[list[str]]
+    body_b64: str
+
+    @field_validator("body_b64")
+    @classmethod
+    def validate_body(cls, value):
+        return RecordedRequest.validate_body(value)
+
+    @field_validator("headers")
+    @classmethod
+    def validate_headers(cls, values):
+        for pair in values:
+            if len(pair) != 2 or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", pair[0]):
+                raise ValueError("Recorded headers must be name/value pairs")
+            if any(ord(char) > 255 or ord(char) == 127 or (ord(char) < 32 and char != "\t") for char in pair[1]):
+                raise ValueError("Recorded header values must use valid Latin-1 octets")
+        return values
+
+
+class RecordingEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request: RecordedRequest
+    response: RecordedReply
 
 
 class RulesInputDataSchema(BaseModel):

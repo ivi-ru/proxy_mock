@@ -89,7 +89,12 @@ async def return_storage() -> dict:
 
 
 async def mock_initialization(
-    app: FastAPI, mock_data: dict, *, preserve_sequences: set | None = None, preserve_recordings: bool = False
+    app: FastAPI,
+    mock_data: dict,
+    *,
+    preserve_sequences: set | None = None,
+    preserve_recordings: bool = False,
+    recording_entries: list[dict] | None = None,
 ):
     mock_data["path"] = validate_mock_path(app, mock_data["path"])
     if mock_data.get("cache_time"):
@@ -104,7 +109,7 @@ async def mock_initialization(
 
     recordings = None
     if config := mock_data.get("recording"):
-        recordings = RecordingStore(config, old_recordings)
+        recordings = RecordingStore(config, old_recordings, entries=recording_entries)
         app.state.recordings[normalized_path] = recordings
     states = build_sequences(mock_data, previous, preserve_sequences or set())
     app.state.sequences[normalized_path] = states

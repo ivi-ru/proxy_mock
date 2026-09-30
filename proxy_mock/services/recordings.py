@@ -11,6 +11,14 @@ from urllib.parse import quote
 from fastapi import Request, Response
 
 
+def recording_id(request: dict) -> str:
+    return hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def recording_size(entry: dict) -> int:
+    return len(json.dumps(entry, ensure_ascii=True).encode())
+
+
 def response_headers(headers, *, preserve_length: bool = False) -> list[list[str]]:
     # httpx decodes the body; framing and hop-by-hop metadata must not be replayed.
     excluded = {
@@ -46,9 +54,11 @@ def recorded_response(data: dict) -> Response:
 
 
 class RecordingStore:
-    def __init__(self, config: dict, previous=None):
+    def __init__(self, config: dict, previous=None, *, entries: list[dict] | None = None):
         self.config = deepcopy(config)
         self._entries = deepcopy(previous._entries) if previous is not None else OrderedDict()
+        if entries is not None:
+            self._entries = OrderedDict((entry["id"], (deepcopy(entry), recording_size(entry))) for entry in entries)
         self._bytes = sum(size for _, size in self._entries.values())
         self._revision = 0
         self._active = True
@@ -74,7 +84,7 @@ class RecordingStore:
             "body_b64": base64.b64encode(await request.body()).decode("ascii"),
             "headers": {name: request.headers.getlist(name) for name in self.config["match_headers"]},
         }
-        key = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        key = recording_id(data)
         return key, data, revision
 
     async def save(self, key: str, request: dict, response, revision: int) -> str:
@@ -87,7 +97,7 @@ class RecordingStore:
                 "body_b64": base64.b64encode(response.content).decode("ascii"),
             },
         }
-        size = len(json.dumps(entry, ensure_ascii=True).encode())
+        size = recording_size(entry)
         async with self._lock:
             if not self._active or revision != self._revision:
                 return "superseded"

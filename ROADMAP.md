@@ -163,7 +163,7 @@ justifies changing it.
 | `/__admin/mocks?path=<encoded-path>` | `GET`, `PUT`, `PATCH`, `DELETE` | Read, create/replace, partially update, or delete one mock |
 | `/__admin/traffic` | `GET`, `DELETE` | Read with filters, or clear all traffic without filters |
 | `/__admin/settings` | `GET`, `PATCH` | Read or partially update recording settings |
-| `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export, replace, or merge a format 1 snapshot |
+| `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export format 2; replace or merge formats 1 and 2 |
 | `/__admin/recordings?path=<encoded-path>` | `GET`, `DELETE` | Inspect or delete recorded replies; optional `id` selects one |
 | `/__admin/sequence-state?path=<encoded-path>` | `GET`, `PATCH` | Inspect or restart a mock/rule sequence cursor |
 | `/__admin/cache` | `DELETE` | Clear the deprecated cache while its removal remains pending |
@@ -177,8 +177,7 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: snapshot evolution,
-cache removal, client transport unification, the installation split, and final release checks.
+The following steps are still pending: cache removal, client transport unification, the installation split, and final release checks.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
@@ -198,8 +197,9 @@ count and serialized bytes, and repeated keys keep the last completed reply. Tra
 failures are excluded; upstream HTTP errors and binary replies are retained. This replaces
 the useful proxied response use case of the cache planned for removal.
 
-Recordings are in memory; their snapshot representation awaits the separate format 2 step.
-Format 1 import/export rejects record/replay explicitly. See the
+Format 2 snapshots preserve completed recordings and their eviction order; import validates
+keys, headers, bodies and limits before changing state. Format 1 imports reject record/replay
+explicitly. See the
 [record/replay contract](README.md#recordreplay).
 
 ### Response sequences
@@ -210,8 +210,8 @@ inspected with `GET /__admin/sequence-state`, and restarted with `PATCH {"positi
 Mock replacement restarts cursors; unrelated partial updates preserve them. Matching and rule
 priority stay unchanged. This remains a response list rather than a scenario engine.
 
-Sequence snapshots await the separately planned format 2 work. Until then, sequence export is
-rejected explicitly, and ordinary format 1 snapshots remain supported. See the complete
+Format 2 snapshots preserve sequence definitions and binary replies. Imported cursors restart
+at zero; export leaves positions unchanged. Format 1 remains readable for ordinary mocks. See the complete
 [sequence contract](README.md#response-sequences).
 
 ### Synchronous client transport

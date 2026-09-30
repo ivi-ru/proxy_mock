@@ -343,7 +343,7 @@ def test_invalid_recording_selectors_never_delete_collection(client, upstream, q
     assert len(client.get_recordings("/recorded")["data"]) == 1
 
 
-def test_clients_custom_prefix_openapi_and_snapshot_guard(admin_server, upstream):
+def test_clients_custom_prefix_openapi_and_snapshot_formats(admin_server, upstream):
     host, prefix = admin_server
     path = "/items/a+b&c=d"
     with ProxyMock(host, admin_prefix=prefix) as client:
@@ -354,7 +354,10 @@ def test_clients_custom_prefix_openapi_and_snapshot_guard(admin_server, upstream
         paths = client.execute_request("GET", prefix + "/openapi.json").json()["paths"]
         assert set(paths[prefix + "/recordings"]) == {"get", "delete"}
         assert not any("replay" in p or "recordings/clear" in p for p in paths)
-        assert client.execute_request("GET", prefix + "/snapshot").status_code == 409
+        exported = client.execute_request("GET", prefix + "/snapshot")
+        assert exported.status_code == 200
+        assert exported.json()["format"] == 2
+        assert len(exported.json()["mocks"][0]["recordings"]) == 1
         snapshot = {"format": 1, "mocks": [{"path": path, "recording": {"mode": "replay"}}]}
         assert client.execute_request("PUT", prefix + "/snapshot", json=snapshot).status_code == 422
         assert len(client.get_recordings(path)["data"]) == 1

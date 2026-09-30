@@ -5,7 +5,7 @@ response sequences and record/replay; package version metadata remains `2.13.0` 
 release-preparation step. Published 2.13 keeps the old routes, status codes, response bodies and client transports. Do not infer
 the checkout's HTTP compatibility from its temporary package version.
 
-Snapshot evolution, cache removal, transport unification and the client/server
+Cache removal, transport unification and the client/server
 installation split remain later steps. They are not implemented by this checkout.
 
 ## Administrative REST API in this checkout
@@ -105,7 +105,8 @@ Traffic reads accept `path`, `method` and `limit`. Deletion clears all traffic a
 query parameters; supplying a filter returns `422` without deleting records. Settings remain a partial update
 of `record_unknown_traffic` and/or positive `max_items` through `PATCH /__admin/settings`.
 
-Snapshots retain format 1 in this step, including binary `body_b64`. Use `PUT` to replace
+Snapshots export format 2; imports and CLI preload accept formats 1 and 2, including binary
+`body_b64`. Format 2 adds sequence definitions and completed recordings. Use `PUT` to replace
 storage or `PATCH` to merge complete mocks keyed by path. Snapshot PATCH is a custom merge:
 it replaces every included mock in full, keeps other paths, and is not RFC 7396 JSON Merge
 Patch. Both methods accept the exported snapshot document. Invalid imports leave storage
@@ -147,9 +148,10 @@ byte limits, and record-mode responses report whether storage succeeded through
 `X-Proxy-Mock-Recording`. See the [full contract](README.md#recordreplay), including lifecycle,
 concurrent requests, binary bodies and repeated headers.
 
-Recordings have no format 1 representation. Export returns `409` for storage containing
-record/replay; format 1 imports with `recording` return `422` atomically. Their persistence
-belongs to the separate format 2 step. Published 2.13 has no record/replay API.
+Snapshot format 2 preserves recording configuration and completed replies, including binary
+bodies, repeated header pairs and eviction order. Invalid keys or collections exceeding their
+configured limits return `422` before mutation. Format 1 has no recording representation and
+rejects this data. Published 2.13 has no record/replay API.
 
 ## Response sequences in this checkout
 
@@ -164,10 +166,13 @@ Inspect cursors with `GET /__admin/sequence-state?path=...`; reset one with `PAT
 partial updates keep cursor positions. Requests already assigned a response keep it across
 reset, reconfiguration or deletion.
 
-Snapshot format 2 remains a separate preparation step. For now, exporting any configured
-sequence returns `409`; format 1 imports with sequences return `422` without changing storage.
-Use the configuration API to create sequences during this stage. Ordinary format 1 snapshots
-remain supported. Do not add sequence fields to format 1: older readers can silently drop them.
+Format 2 exports sequence definitions and binary responses; imported cursors start at zero.
+Export does not change positions. Format 1 imports with sequences return `422` atomically.
+Ordinary format 1 snapshots remain supported. Published 2.x cannot read format 2; do not
+relabel its envelope as format 1. Traffic, cache contents and in-flight requests are excluded.
+Snapshot merge replaces supplied mocks and recordings completely while preserving omitted
+mocks. Missing recording arrays mean empty collections. The CLI restores format 2 at startup.
+See the [snapshot contract](README.md#snapshots-of-the-storage).
 
 ## Released 2.13 compatibility reference
 
@@ -292,5 +297,5 @@ removed. For cached upstream responses, use the explicit record/replay configura
 above in this checkout. Published 2.13 retains caching and has no record/replay API.
 
 Record/replay and ordered response sequences are implemented in this checkout as documented
-above; their snapshot support awaits format 2.
+above, including snapshot format 2 support.
 gRPC and an authentication token are outside the 3.0 scope.

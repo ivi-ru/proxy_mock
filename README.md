@@ -251,22 +251,44 @@ to merge mocks by their path. Merge replaces each included mock in full and leav
 untouched; it is not JSON Merge Patch. Both accept the exported document. Invalid snapshots
 are rejected before storage changes.
 
-The document still uses format 1 in this development step. Storage containing response
-sequences or record/replay cannot be exported until format 2 is implemented; see [the transition note](#response-sequences).
-
-The format 1 document looks like this:
+Export uses format 2. Import and `--mocks` accept formats 1 and 2. The format 2 document
+includes sequence definitions and completed recordings alongside ordinary mock configuration:
 
 ```json
 {
-  "format": 1,
+  "format": 2,
   "protocol": "http",
-  "generated_by": "proxy_mock 2.11.0",
+  "generated_by": "proxy_mock 2.13.0",
   "mocks": [{"path": "/external/api", "mock_data": {"body": {"answer": 42}, "status_code": 200}}]
 }
 ```
 
 Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_b64` instead of
 `body`, and are restored as bytes on import.
+
+Format 2 keeps `sequence` definitions on mocks and rules. A mock with `recording` configuration
+also exports its `recordings` array, in oldest-write order. Each array entry has the same
+`id`, `request` and `response` representation returned by `GET /__admin/recordings`. An omitted
+array imports as empty. Export does not consume or reset sequences; import restarts cursors at
+zero. Sequence runtime positions, traffic, cache contents and requests in flight are excluded.
+Settings, including record/replay mode, are preserved; import never contacts an upstream.
+
+Before mutation, import validates every mock, binary body and recording. Entry ids must match
+the exact recorded request; duplicate paths/ids, unknown format 2 fields, invalid headers or
+bodies, and recording collections exceeding their configured count/byte budgets return `422`.
+Imported data is never silently evicted to fit limits. Binary config sections use either
+`body` or `body_b64`, never both. Recorded bodies always use canonical base64 strings, and
+recorded header pairs preserve duplicates and Latin-1 octets. `HEAD` recordings retain a
+single numeric representation length; HEAD, 204 and 304 replies have empty bodies.
+
+Snapshot merge replaces each supplied mock's configuration and recordings in full; omitted
+mocks retain their runtime state. Replace removes omitted mocks and their runtime state.
+Replaced mocks detach pending recordings so late responses cannot modify imported data.
+The CLI validates the file before starting and restores the same data at startup.
+
+Format 1 remains readable for static/proxy mocks and rules. Sequences and recordings require
+format 2, and a format 1 document containing them is rejected. Published 2.x cannot read
+format 2: do not relabel an exported format 2 document as format 1.
 
 **Requirements and limitations:**
 
@@ -318,7 +340,7 @@ such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mo
 | `DELETE` | `/__admin/traffic` | Clear all traffic; no query parameters | `200` |
 | `GET` | `/__admin/settings` | Read traffic recording settings | `200` |
 | `PATCH` | `/__admin/settings` | Partially update `record_unknown_traffic` and/or `max_items` | `200` |
-| `GET` | `/__admin/snapshot` | Export the format 1 snapshot document | `200` |
+| `GET` | `/__admin/snapshot` | Export the format 2 snapshot document | `200` |
 | `PUT` | `/__admin/snapshot` | Replace all mocks from a snapshot | `200` |
 | `PATCH` | `/__admin/snapshot` | Merge a snapshot by mock path | `200` |
 | `GET` | `/__admin/recordings?path=%2Finventory` | Inspect recorded replies; optional `id` selects one entry | `200` |
@@ -498,10 +520,9 @@ Sequences cannot be combined with response caching or mock-level `proxy_host`, b
 would bypass the ordered replies. A rule cannot combine its own sequence with its own
 `input_data.proxy_host`. These combinations return `422` before any configuration is changed.
 
-**Snapshot transition:** format 1 cannot safely describe this feature to older readers. Until
-the separately planned format 2 work, exporting storage containing any sequence returns `409`,
-and importing a format 1 document containing sequences returns `422`. Ordinary format 1
-snapshots still work. This prevents silent sequence loss; no cursor is serialized.
+**Snapshots:** format 2 preserves sequence definitions, including binary responses. Import
+restarts all imported mock and rule cursors at zero; export leaves current positions unchanged.
+Format 1 imports with sequences return `422`. See [snapshot semantics](#snapshots-of-the-storage).
 
 ## Record/replay
 
@@ -584,10 +605,10 @@ sequences or nonzero `cache_time` with `422`. Configured mock methods still appl
 methods and administrative requests never produce recordings. Static response and delay
 settings do not affect record/replay replies.
 
-**Snapshot transition:** until the separately planned format 2 step, exporting storage with
-record/replay returns `409`, and format 1 imports containing `recording` return `422` before
-changing any state. Ordinary format 1 snapshots remain supported. Recordings currently live
-only in process memory; do not use format 1 to transfer them.
+**Snapshots:** format 2 includes the recording configuration and completed entries, preserving
+matching keys, binary bodies, repeated header pairs and eviction order. Entries exceeding the
+configured limits or failing integrity checks are rejected before mutation. Format 1 imports
+containing recording data return `422`. See [snapshot semantics](#snapshots-of-the-storage).
 
 ## Catching requests on `/<path>`
 

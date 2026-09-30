@@ -80,12 +80,22 @@ class TestSnapshotFile:
 
 
 class TestServeWithPreloadedMocks:
-    def test_mocks_from_the_file_answer_after_startup(self, tmp_path):
+    @pytest.mark.parametrize("format", [1, 2])
+    def test_mocks_from_the_file_answer_after_startup(self, tmp_path, format):
         snapshot = {
-            "format": 1,
+            "format": format,
             "protocol": "http",
             "mocks": [{"path": "/preloaded", "mock_data": {"body": {"loaded": True}, "status_code": 200}}],
         }
+        if format == 2:
+            from tests.test_snapshot_v2 import recording_entry
+
+            snapshot["mocks"].extend(
+                [
+                    {"path": "/ordered", "sequence": {"responses": [{"body_b64": "/wA="}, {"body": "second"}]}},
+                    {"path": "/recorded", "recording": {"mode": "replay"}, "recordings": [recording_entry()]},
+                ]
+            )
         snapshot_file = tmp_path / "mocks.json"
         snapshot_file.write_text(json.dumps(snapshot), encoding="utf-8")
 
@@ -114,6 +124,27 @@ class TestServeWithPreloadedMocks:
 
             assert requests.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
             assert requests.get(f"{url}/__admin/mocks", timeout=5).json()["data"]["/preloaded"]
+            if format == 2:
+                assert requests.get(f"{url}/ordered", timeout=5).content == b"\xff\x00"
+                assert requests.get(f"{url}/ordered", timeout=5).text == "second"
+                assert requests.get(f"{url}/recorded", timeout=5).content == b"\x00\xffsaved"
+                exported = requests.get(f"{url}/__admin/snapshot", timeout=5).json()
+                assert exported["format"] == 2
+                assert len(exported["mocks"][-1]["recordings"]) == 1
         finally:
             process.terminate()
             process.wait(timeout=10)
+
+
+@pytest.mark.parametrize(
+    "mock",
+    [
+        {"path": "/bad", "sequence": {"responses": []}},
+        {"path": "/bad", "recording": {"mode": "replay"}, "recordings": [{"id": "bad"}]},
+    ],
+)
+def test_cli_rejects_invalid_format_two_before_startup(tmp_path, capsys, mock):
+    snapshot_file = tmp_path / "bad.json"
+    snapshot_file.write_text(json.dumps({"format": 2, "mocks": [mock]}), encoding="utf-8")
+    assert main(["--mocks", str(snapshot_file)]) == 2
+    assert "not a valid snapshot" in capsys.readouterr().err

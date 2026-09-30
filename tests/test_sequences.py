@@ -266,14 +266,17 @@ def test_both_clients_manage_sequences_with_a_custom_prefix(admin_server):
 
 
 @pytest.mark.parametrize("rule", [False, True])
-def test_format_one_cannot_silently_lose_sequences(client, rule):
+def test_format_two_exports_sequences_and_format_one_rejects_them(client, rule):
     mock = {"path": "/ordered"}
     mock.update({"rules": [{"sequence": sequence("A", "B")}]} if rule else {"sequence": sequence("A", "B")})
     response = client.execute_request("PUT", "/__admin/mocks?path=/ordered", json=mock)
     assert response.status_code == 201
     response = client.execute_request("GET", "/__admin/snapshot")
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "unsupported_snapshot"
+    assert response.status_code == 200
+    snapshot = response.json()
+    assert snapshot["format"] == 2
+    exported = snapshot["mocks"][0]
+    assert (exported["rules"][0] if rule else exported)["sequence"]["responses"][0]["body"] == "A"
     response = client.execute_request("PUT", "/__admin/snapshot", json={"format": 1, "mocks": [mock]})
     assert response.status_code == 422
     assert client.get_sequence_state("/ordered", 0 if rule else None)["data"]["position"] == 0

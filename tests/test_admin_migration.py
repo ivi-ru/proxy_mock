@@ -186,7 +186,7 @@ def test_snapshot_put_replaces_and_patch_merges(admin_server):
         assert list(client.get_storage()["data"]) == ["/loaded"]
         assert client.execute_request("GET", "/existing").status_code == 404
         exported = requests.get(url, timeout=5).json()
-        assert exported["format"] == 1
+        assert exported["format"] == 2
         assert exported["mocks"][0]["path"] == "/loaded"
 
 

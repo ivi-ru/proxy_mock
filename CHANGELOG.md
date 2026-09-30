@@ -14,8 +14,8 @@ remaining 3.0 roadmap items are still pending.
   Missing item reads, patches and deletes return `404`. Administrative errors share
   `{"success": false, "error": {"code": "...", "message": "...", "details": ...}}`, with
   optional details.
-* Snapshots retain format 1: `GET /__admin/snapshot` exports, `PUT` replaces and `PATCH` merges
-  complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
+* Snapshots export format 2 and import formats 1 and 2. `GET /__admin/snapshot` exports;
+  `PUT` replaces and `PATCH` merges complete mocks by path. Traffic uses `GET` and `DELETE /__admin/traffic`; recording settings
   use `GET` and `PATCH /__admin/settings`. Invalid traffic filters return `422`.
 * The Python clients and pytest fixtures use the administrative API. Client transports and
   package installation remain unchanged at this stage. Deprecated response caching remains
@@ -29,9 +29,9 @@ remaining 3.0 roadmap items are still pending.
 * Added `GET` and `PATCH /__admin/sequence-state` and matching sync/async client helpers to
   inspect and restart a cursor. Unrelated PATCH updates preserve positions; explicit sequence
   or rule replacement restarts the corresponding cursors. Full mock replacement resets all.
-* Sequence configuration rejects incompatible caching/proxy settings. During the snapshot
-  transition, exporting sequences returns `409` and format 1 imports containing them return
-  `422`, preventing silent loss until format 2 support is implemented.
+* Sequence configuration rejects incompatible caching/proxy settings. Format 1 imports
+  containing sequences return `422`; format 2 preserves their
+  definitions and binary responses.
 
 * Added explicit mock-level record/replay. Record mode proxies every request and stores the
   last completed HTTP reply per exact method/path/query/body key, with optional selected
@@ -42,7 +42,17 @@ remaining 3.0 roadmap items are still pending.
   payloads and HEAD representation lengths are supported.
 * Recording collections have configurable entry and byte limits. Late responses cannot
   restore deleted recordings or mutate a replaced mock generation. Snapshot format 1 rejects
-  record/replay explicitly pending the separate format 2 step.
+  record/replay explicitly; format 2 preserves completed recordings.
+
+* Added snapshot format 2 with mock/rule sequence definitions and completed recording entries,
+  preserving binary bodies, repeated header pairs, matching keys and eviction order. Export
+  is observational; imported sequence cursors restart at zero. Traffic, caches and pending
+  requests are excluded. Format 1 remains accepted for legacy mock configuration.
+* Snapshot validation checks the whole document, including recording integrity, duplicate ids,
+  header/body consistency and configured storage limits, before mutating state. Invalid data
+  is rejected rather than trimmed. Merge replaces supplied mocks and recordings in full.
+* CLI preload and both clients restore format 2; OpenAPI documents both accepted formats and
+  the format 2 export. Ambiguous config bodies containing both body and body_b64 are rejected.
 
 Version 2.13.0
 ==============

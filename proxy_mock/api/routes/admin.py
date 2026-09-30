@@ -11,7 +11,13 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from proxy_mock.api.errors import api_error
-from proxy_mock.api.openapi import body_documentation, inline_schema, mock_documentation, snapshot_documentation
+from proxy_mock.api.openapi import (
+    body_documentation,
+    inline_schema,
+    mock_documentation,
+    snapshot_documentation,
+    snapshot_schema,
+)
 from proxy_mock.api.schemas import (
     DataResponse,
     ErrorResponse,
@@ -240,12 +246,12 @@ async def patch_settings(request: Request):
         return {"success": True, "data": settings(request)}
 
 
-@router.get("/snapshot")
+@router.get("/snapshot", responses={200: {"content": {"application/json": {"schema": snapshot_schema(2)}}}})
 async def get_snapshot(request: Request):
     check_query(request, set())
     try:
         async with request.app.state.admin_lock:
-            return JSONResponse(await export_snapshot(request.app.state.version))
+            return JSONResponse(await export_snapshot(request.app.state.mock_app))
     except SnapshotError as err:
         raise api_error(err.code, "unsupported_snapshot", str(err.detail)) from err
 
