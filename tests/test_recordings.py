@@ -43,7 +43,12 @@ def upstream():
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    class UpstreamServer(ThreadingHTTPServer):
+        # The concurrency test opens twelve connections at once. The default backlog of five
+        # can reject connections on macOS before this disposable upstream accepts them.
+        request_queue_size = 32
+
+    server = UpstreamServer(("127.0.0.1", 0), Handler)
     state.host = f"http://127.0.0.1:{server.server_port}"
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()

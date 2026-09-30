@@ -19,11 +19,11 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 ## Quick start
 
-With Python 3.11 or newer, install the published 2.x package and test dependencies in a virtual
-environment. The Python example also works with this development checkout:
+With Python 3.11 or newer, install this development checkout and pytest in a virtual
+environment from the repository root:
 
 ```bash
-python -m pip install 'proxy_mock>=2.13,<3' pytest
+python -m pip install '.[server]' pytest
 ```
 
 Save this complete test as `test_http_dependency.py`:
@@ -53,7 +53,8 @@ python -m pytest -q test_http_dependency.py
 Expected result: **1 passed**. The fixtures start a server on a free loopback port, reset its
 state after the test, and shut it down at the end of the session. No separate server is needed.
 
-The [runnable examples](examples/README.md) include this test and a JSON snapshot round trip.
+The [runnable examples](examples/README.md) include REST mock updates, sequence restart,
+offline replay from a snapshot, and an async client alongside this quick start.
 The [Docker Compose example](examples/compose/README.md) shows an application in a separate
 container calling a mocked inventory service and verifies the captured request.
 To use the tool outside pytest, start the standalone server with `proxy-mock --port 5000`.
@@ -169,27 +170,31 @@ Make sure the following are installed:
 The [Docker Compose example](examples/compose/README.md) includes a complete local build and
 an application calling its mock from another container.
 
-Every release is published to GHCR. The package currently requires registry access because
-public visibility is disabled by the organization. If you have access, no local build is needed:
+Published releases have images on GHCR. Access may require registry credentials.
+The `latest` image follows published releases and does not contain this unreleased 3.0 API.
+For a released server, no local build is needed:
 
 ```bash
 docker run --rm -p 5000:5000 ghcr.io/ivi-ru/proxy_mock:latest
 ```
 
-To start from a prepared snapshot, mount it and pass `--mocks`:
+To build this checkout without GHCR access:
 
 ```bash
-docker run --rm -p 5000:5000 -v "$PWD/mocks.json:/mocks.json" \
-    ghcr.io/ivi-ru/proxy_mock:latest \
+docker build -t proxy-mock:local .
+docker run --rm -p 127.0.0.1:5000:5000 proxy-mock:local
+```
+
+To preload a snapshot, replace the run command above with:
+
+```bash
+docker run --rm -p 127.0.0.1:5000:5000 -v "$PWD/mocks.json:/mocks.json" \
+    proxy-mock:local \
     python -m proxy_mock --host=0.0.0.0 --port=5000 --mocks /mocks.json
 ```
 
-To build from a public checkout without GHCR access:
-
-```bash
-docker build -t proxy-mock .
-docker run --rm -p 127.0.0.1:5000:5000 proxy-mock
-```
+A snapshot must match the server: published 2.x reads format 1; this checkout reads formats
+1 and 2. A format 2 snapshot needs the locally built image while 3.0 remains unreleased.
 
 Once it is up, the service listens on `http://localhost:5000`.
 
@@ -215,8 +220,8 @@ that explanation rather than starting a service that lies every other call.
 
 The package registers a pytest plugin, so the fixtures are available as soon as it is installed
 — no `conftest.py` boilerplate. Starting a local instance requires the `server` extra. A base
-install is sufficient when `PROXY_MOCK_URL` points at an existing instance. The [quick start](#quick-start) is a complete test that configures
-a response, makes an HTTP request, and verifies the captured traffic.
+install is sufficient when `PROXY_MOCK_URL` points at an existing instance. The
+[quick start](#quick-start) configures a response, makes an HTTP request, and verifies traffic.
 
 | Fixture | Scope | What it gives |
 |---------|-------|---------------|
@@ -224,7 +229,9 @@ a response, makes an HTTP request, and verifies the captured traffic.
 | `proxy_mock` | function | A `ProxyMock` client bound to that URL. Mocks and traffic are reset after every test |
 
 To run the tests against an instance that is already up (in docker compose, for example), set
-`PROXY_MOCK_URL` — the fixture then uses it and starts nothing:
+`PROXY_MOCK_URL` — the fixture then uses it and starts nothing. Use a dedicated test
+instance because fixture teardown deletes all its mocks and traffic. For a custom administrative
+prefix, set `PROXY_MOCK_ADMIN_PREFIX` in the test environment to match the server:
 
 ```bash
 PROXY_MOCK_URL=http://localhost:5000 pytest
@@ -263,11 +270,11 @@ includes sequence definitions and completed recordings alongside ordinary mock c
 {
   "format": 2,
   "protocol": "http",
-  "generated_by": "proxy_mock 2.13.0",
   "mocks": [{"path": "/external/api", "mock_data": {"body": {"answer": 42}, "status_code": 200}}]
 }
 ```
 
+The exported `generated_by` field reports the server version and is optional on import.
 Binary bodies cannot be written as JSON, so they travel base64-encoded in `body_b64` instead of
 `body`, and are restored as bytes on import.
 
@@ -276,7 +283,8 @@ also exports its `recordings` array, in oldest-write order. Each array entry has
 `id`, `request` and `response` representation returned by `GET /__admin/recordings`. An omitted
 array imports as empty. Export does not consume or reset sequences; import restarts cursors at
 zero. Sequence runtime positions, traffic and requests in flight are excluded.
-Settings, including record/replay mode, are preserved; import never contacts an upstream.
+Mock configuration, including record/replay mode, is preserved. Global traffic settings are
+excluded; import never contacts an upstream.
 
 Before mutation, import validates every mock, binary body and recording. Entry ids must match
 the exact recorded request; duplicate paths/ids, unknown format 2 fields, invalid headers or
@@ -374,7 +382,7 @@ such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mo
 The query is part of a resource URI: `/__admin/mocks?path=%2Finventory` identifies the mock whose
 request path is `/inventory`. URL-encode the path rather than inserting it into administrative
 path segments. `PUT` is idempotent and replaces the whole configuration; omitted properties
-return to defaults. `PATCH` preserves omitted properties. Neither operation uses `POST`.
+return to defaults. Its `Location` header identifies the mock resource URI. `PATCH` preserves omitted properties. Neither operation uses `POST`.
 An absent query selects the collection for `GET` and `DELETE`; an empty `path` is invalid.
 `PUT` and `PATCH` require `path` in the query. A body `path`, if present, must match it.
 
@@ -388,7 +396,7 @@ export, which returns the snapshot document itself. Administrative errors share 
 The message is descriptive; error responses may also include `error.details`. Missing mocks
 return `404` for item `GET`, `PATCH` and `DELETE`. Invalid fields, empty paths and invalid
 traffic filters return `422`; malformed request bodies return `400`; unsupported body media
-types return `415`. An unsupported administrative method returns `405`. Legacy service routes
+types return `415`. An unsupported administrative method on a known resource returns `405`. Legacy service routes
 and action-style `POST` aliases are no longer administrative operations.
 
 ## Mock representation and partial updates
@@ -435,7 +443,8 @@ Each entry in `rules`:
 - **`extra_info`** — rule metadata (appears in traffic as `rule_extra_info`).
 - **`priority`** — `int`, higher values are checked earlier (default `0`).
 
-Rules are sorted by descending `priority`, then by insertion order; the first match wins.
+Rules are sorted by descending `priority`; equal priorities retain submitted list order unless
+explicit `timestamp` values change it. The first match wins.
 
 #### Full representation example
 
@@ -473,7 +482,9 @@ Send this representation to `PUT /__admin/mocks?path=%2Ftest%2Fendpoint`.
 
 ## Response sequences
 
-Available in this unreleased checkout. Set `sequence` on a mock or on an individual rule:
+Available in this unreleased checkout. The
+[runnable sequence example](examples/test_v3_workflows.py) covers exhaustion, restart and
+snapshot restoration. Set `sequence` on a mock or on an individual rule:
 
 ```python
 proxy_mock.configure_mock(
@@ -546,7 +557,10 @@ Format 1 imports with sequences return `422`. See [snapshot semantics](#snapshot
 
 ## Record/replay
 
-Available in this unreleased checkout. Configure a mock with an upstream and explicit recording:
+Available in this unreleased checkout. The
+[runnable offline replay example](examples/test_v3_workflows.py) starts a disposable upstream,
+saves binary replies and cookies, then replays a snapshot after the upstream has stopped.
+Configure a mock with an upstream and explicit recording:
 
 ```python
 proxy_mock.configure_mock(

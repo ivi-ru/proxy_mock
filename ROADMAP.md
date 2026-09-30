@@ -41,9 +41,10 @@ should hand-roll. Everything below that threshold gets written here instead.
 The reason is the second audience: projects that install proxy-mock into their own test
 environment inherit every dependency and every version constraint we take on.
 
-Current footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
+Historical footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
 distributions** — the package plus 21 dependencies, down from 26 distributions in 2.11.0.
-The install split and synchronous client migration in 3.0 will reduce this further.
+The install split and synchronous client migration are implemented in this 3.0 checkout;
+current distribution counts will be measured during final release checks.
 
 ### Public API contract
 
@@ -57,8 +58,8 @@ The install split and synchronous client migration in 3.0 will reduce this furth
 **Internal** — may change in any release, without notice:
 
 - `proxy_mock.services.*`, `proxy_mock.repositories.*`, `proxy_mock.core.*`, `proxy_mock.utils`
-- `proxy_mock.any_catcher` (currently documented as the uvicorn entry point; replaced by the
-  console script in 2.11 and by `proxy_mock.app:create_app` in 3.0)
+- `proxy_mock.any_catcher` (the historical uvicorn entry point; use the console script or
+  `proxy_mock.app:create_app` for the supported entry points)
 - the module layout in general
 
 ### Breaking changes
@@ -176,7 +177,8 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-The following steps are still pending: documentation/integration completion and final release checks.
+Documentation and runnable integration examples now describe the implemented 3.0 contract.
+Only final release validation and the version bump remain pending.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
@@ -238,8 +240,11 @@ instance no longer inherits the server dependencies and their constraints.
 
 ### Entry point
 
-The documented entry point becomes the `proxy-mock` console script, with
-`proxy_mock.app:create_app` for embedding. `proxy_mock.any_catcher:app` stops being documented.
+Implemented locally: the documented entry points are the `proxy-mock` console script and
+`proxy_mock.app:create_app` for embedding, both using the server extra.
+`proxy_mock.any_catcher:app` appears only as a historical migration reference.
+The [runnable examples](examples/README.md) cover REST configuration, response sequences,
+offline snapshot replay, both clients, and a storefront with a separate HTTP dependency.
 
 ---
 

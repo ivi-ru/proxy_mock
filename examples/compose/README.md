@@ -30,8 +30,8 @@ The check exits nonzero if either assertion fails. Run the cleanup command even 
 check. No persistent volumes, credentials, external APIs, or host Python packages are required.
 Docker downloads the base images and builds proxy-mock from this checkout on the first run.
 
-The GHCR package currently requires registry access; public visibility is disabled by the
-organization. Building from the public repository above works without GHCR credentials.
+Building this checkout does not need GHCR credentials. Published images use the released
+2.x API and cannot run this example.
 
 ## Addresses inside and outside Docker
 
@@ -56,3 +56,14 @@ use the old administrative API and cannot run this checkout's check script.
 
 CI overrides `PROXY_MOCK_IMAGE` with the image built from the current checkout and runs the same
 start, check, and cleanup commands.
+
+## Check the scripts on the host
+
+`uv run --extra server pytest -q examples/test_storefront.py` from the repository root starts
+the same application and check scripts against a local proxy-mock fixture. No Docker daemon
+is required for that test; container DNS and networking are verified by the Compose run above.
+
+For manual host runs, `app.py` reads `INVENTORY_URL`, `APP_HOST` (default `0.0.0.0`) and
+`APP_PORT` (default `8000`). `check.py` reads `MOCK_URL`, `APP_URL` and
+`PROXY_MOCK_ADMIN_PREFIX` (default `/__admin`), preserving the Compose addresses by default.
+The check clears all mocks and traffic on its target instance, so use a dedicated test server.

@@ -84,6 +84,14 @@ remaining 3.0 roadmap items are still pending.
 * Development instructions, Docker and server CI checks select the extra explicitly. Added
   isolated base/server wheel checks, including clients and fixtures against an external server.
 
+* Aligned the quick start, installation and migration instructions with the development
+  checkout. Published 2.x compatibility is a separate reference; format 2 snapshots must use
+  a 3.0 server. Clarified resource Location headers and global traffic settings excluded
+  from snapshots.
+* Added runnable REST lifecycle, binary sequence, offline recording snapshot and async-client
+  examples. The storefront scripts accept local URLs and a custom administrative prefix, so
+  their HTTP behavior is tested without Docker as well as through the Compose CI check.
+
 Version 2.13.0
 ==============
 

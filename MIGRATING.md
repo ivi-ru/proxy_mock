@@ -8,6 +8,23 @@ the checkout's HTTP compatibility from its temporary package version.
 Both clients now use `httpx2`. The base install contains clients; the optional `server` extra
 provides dependencies for a local server as described below.
 
+## Upgrade checklist
+
+1. Upgrade clients and server together from this checkout; published 2.x is not HTTP-compatible
+   with the new server, even when both use `/__admin`.
+2. Install the base package for an external server, or the `server` extra for local startup.
+   Match the administrative prefix in both environments.
+3. Move handwritten HTTP calls to the resource table below. Review replacement versus partial
+   update, missing-item errors, and administrative error envelopes.
+4. Update Python response checks, request body arguments, redirects, timeouts and native client
+   customization using the transport section below.
+5. Remove caching calls and fields. Choose explicit record/replay for saved upstream replies;
+   ordinary proxying fetches every time.
+6. Keep a copy of existing format 1 snapshots. Import is supported, but new format 2 exports
+   cannot be loaded by a 2.x server. Sequence cursors restart on import.
+7. Run the [3.0 examples](examples/README.md) against a dedicated instance; pytest fixture
+   cleanup clears its mocks and traffic. Complete the final release checks before publishing.
+
 ## Administrative REST API in this checkout
 
 The server and both Python clients now default to `/__admin`. Set `PROXY_MOCK_ADMIN_PREFIX` on
@@ -97,7 +114,7 @@ export still returns the snapshot document directly. Administrative errors now u
 successful empty result for a missing mock, or `201` for replacement. Invalid representations,
 empty paths, body/query path mismatches and invalid traffic filters return `422`. Malformed
 JSON/msgpack returns `400`; unsupported mock body content types return `415`. Unsupported
-administrative methods return `405`. These errors do not change user-defined mock responses.
+administrative methods on known resources return `405`. These errors do not change user-defined mock responses.
 
 ### Traffic, settings and snapshots
 
@@ -128,7 +145,7 @@ administrative requests. Published 2.13 clients use a different HTTP contract ev
 opt-in prefix is `/__admin`.
 
 Both clients return `httpx2.Response`; migrate request arguments and response handling
-as described below. Response caching is removed. Installation extras remain separate work.
+as described below. Response caching is removed; local startup requires the `server` extra.
 
 ## Record/replay in this checkout
 
@@ -172,92 +189,6 @@ relabel its envelope as format 1. Traffic and in-flight requests are excluded.
 Snapshot merge replaces supplied mocks and recordings completely while preserving omitted
 mocks. Missing recording arrays mean empty collections. The CLI restores format 2 at startup.
 See the [snapshot contract](README.md#snapshots-of-the-storage).
-
-## Released 2.13 compatibility reference
-
-The following sections describe published 2.13 only. They do not describe this checkout.
-
-### Stay on 2.x until you are ready
-
-Pin `proxy_mock>=2.13,<3` in a test project that needs the existing contract. Upgrade the server
-first within the 2.x line, then the clients. A 2.13 client without `admin_prefix` still uses the
-legacy paths and can talk to an older 2.x server. Keep `requests` behaviour until you have checked your callers.
-Already installed old versions do not acquire warnings remotely: read release notes and update
-to 2.13 to see these notices. There is no network update check or telemetry.
-
-### Try the administrative aliases in 2.13
-
-Aliases are **opt-in** so that an existing mock at `/__admin` is not unexpectedly shadowed.
-Start the server with:
-
-```sh
-PROXY_MOCK_ADMIN_PREFIX=/__admin proxy-mock --host 127.0.0.1 --port 5000
-```
-
-Use the same prefix explicitly in either client:
-
-```python
-from proxy_mock.client import ProxyMock, AsyncProxyMock
-
-with ProxyMock("http://127.0.0.1:5000", admin_prefix="/__admin") as client:
-    client.configure_mock(path="/inventory", body={"available": True})
-    assert client.execute_request("GET", "/inventory").json()["available"]
-
-# In async code:
-# async with AsyncProxyMock("http://127.0.0.1:5000", admin_prefix="/__admin") as client:
-#     await client.get_storage()
-```
-
-The prefix must be an absolute path of letters, digits, underscores, hyphens and optional
-path segments, without a trailing slash. It must not overlap an existing service path such as
-`/storage`, `/traffic`, `/docs` or their children. A prefix is not authentication. Reserve its
-administrative paths for the server and choose a prefix that does not collide with your mocks.
-Leaving the environment variable unset disables aliases; an explicitly empty value is invalid.
-Generic `execute_request()` calls always use the route you provide, without rewriting mock URLs.
-The pytest fixture continues using the legacy routes in 2.13; construct a client explicitly to
-exercise the aliases.
-
-| Legacy operation | Released 2.13 opt-in alias |
-| --- | --- |
-| `GET /proxy_mock` | `GET /__admin` |
-| `POST /configure_mock` | `POST /__admin/mocks` |
-| `PATCH /configure_mock` | `PATCH /__admin/mocks` |
-| `GET /storage` | `GET /__admin/mocks` |
-| `DELETE /storage` | `DELETE /__admin/mocks` |
-| `POST /storage/clean` | `DELETE /__admin/mocks` |
-| `GET /traffic` | `GET /__admin/traffic` |
-| `DELETE /traffic`, `POST /traffic/clean` | `DELETE /__admin/traffic` |
-| `GET /traffic/settings` | `GET /__admin/settings` |
-| `PATCH /traffic/settings`, `POST /traffic/settings` | `PATCH /__admin/settings` |
-| `GET /storage/snapshot` | `GET /__admin/snapshot` |
-| `POST /storage/snapshot` | `POST /__admin/snapshot` |
-| `POST /cache/clean` | No alias; the legacy cache endpoint remains |
-
-In 2.13 aliases keep the existing JSON/msgpack bodies, query parameters and status codes.
-`?path=...`, traffic filters and snapshot `?mode=merge|replace` work unchanged. These aliases do not implement the new
-PUT/PATCH contract above. Old paths remain available even when aliases are enabled in 2.13.
-
-`clean_storage(path=...)` still calls its legacy endpoint, even with `admin_prefix`, because
-it returns `200` with `success: false` for a missing mock. Switch to `delete_mock(path)`, which
-returns `404` when the mock is missing. `clean_cache()` also stays on its legacy path in 2.13.
-
-### Understand the 2.13 warnings
-
-Every matched legacy service operation returns `Deprecation: @1789603200` (the announcement
-date, 2026-09-17 UTC) and a `Link` with `rel="deprecation"` pointing to this guide. The date
-syntax follows [RFC 9745](https://www.rfc-editor.org/rfc/rfc9745.html); it replaces the old
-non-standard `Deprecation: true` value. When aliases are enabled, another link with
-`rel="successor-version"` points to the replacement resource. Consult the table for the HTTP
-method: a URI alone does not tell you to change `POST` to `DELETE` or `PATCH`.
-The same notices accompany handled error responses. User mock responses are not marked.
-Aliases themselves have no route-deprecation header. Server warnings are logged once per
-operation per process, rather than for every request. No `Sunset` date is promised yet.
-
-Python emits `DeprecationWarning` for the synchronous client's upcoming transport change,
-`cache_time`, `clean_cache()` and `clean_storage(path=...)`. Python's standard warning filters
-control repetition and visibility; use `python -W default::DeprecationWarning -m pytest` to
-review them. Warnings do not change successful responses or retries. Projects treating warnings
-as errors should review these notices before enabling that policy for a dependency upgrade.
 
 ## Python client transport in this checkout
 
@@ -408,3 +339,89 @@ Published 2.13 retains its caching API and transport behavior.
 
 Record/replay, ordered sequences and snapshot format 2 are implemented in this checkout.
 gRPC and an authentication token are outside the 3.0 scope.
+
+## Released 2.13 compatibility reference
+
+The following sections describe published 2.13 only. They do not describe this checkout.
+
+### Stay on 2.x until you are ready
+
+Pin `proxy_mock>=2.13,<3` in a test project that needs the existing contract. Upgrade the server
+first within the 2.x line, then the clients. A 2.13 client without `admin_prefix` still uses the
+legacy paths and can talk to an older 2.x server. Keep `requests` behaviour until you have checked your callers.
+Already installed old versions do not acquire warnings remotely: read release notes and update
+to 2.13 to see these notices. There is no network update check or telemetry.
+
+### Try the administrative aliases in 2.13
+
+Aliases are **opt-in** so that an existing mock at `/__admin` is not unexpectedly shadowed.
+Start the server with:
+
+```sh
+PROXY_MOCK_ADMIN_PREFIX=/__admin proxy-mock --host 127.0.0.1 --port 5000
+```
+
+Use the same prefix explicitly in either client:
+
+```python
+from proxy_mock.client import ProxyMock, AsyncProxyMock
+
+with ProxyMock("http://127.0.0.1:5000", admin_prefix="/__admin") as client:
+    client.configure_mock(path="/inventory", body={"available": True})
+    assert client.execute_request("GET", "/inventory").json()["available"]
+
+# In async code:
+# async with AsyncProxyMock("http://127.0.0.1:5000", admin_prefix="/__admin") as client:
+#     await client.get_storage()
+```
+
+The prefix must be an absolute path of letters, digits, underscores, hyphens and optional
+path segments, without a trailing slash. It must not overlap an existing service path such as
+`/storage`, `/traffic`, `/docs` or their children. A prefix is not authentication. Reserve its
+administrative paths for the server and choose a prefix that does not collide with your mocks.
+Leaving the environment variable unset disables aliases; an explicitly empty value is invalid.
+Generic `execute_request()` calls always use the route you provide, without rewriting mock URLs.
+The pytest fixture continues using the legacy routes in 2.13; construct a client explicitly to
+exercise the aliases.
+
+| Legacy operation | Released 2.13 opt-in alias |
+| --- | --- |
+| `GET /proxy_mock` | `GET /__admin` |
+| `POST /configure_mock` | `POST /__admin/mocks` |
+| `PATCH /configure_mock` | `PATCH /__admin/mocks` |
+| `GET /storage` | `GET /__admin/mocks` |
+| `DELETE /storage` | `DELETE /__admin/mocks` |
+| `POST /storage/clean` | `DELETE /__admin/mocks` |
+| `GET /traffic` | `GET /__admin/traffic` |
+| `DELETE /traffic`, `POST /traffic/clean` | `DELETE /__admin/traffic` |
+| `GET /traffic/settings` | `GET /__admin/settings` |
+| `PATCH /traffic/settings`, `POST /traffic/settings` | `PATCH /__admin/settings` |
+| `GET /storage/snapshot` | `GET /__admin/snapshot` |
+| `POST /storage/snapshot` | `POST /__admin/snapshot` |
+| `POST /cache/clean` | No alias; the legacy cache endpoint remains |
+
+In 2.13 aliases keep the existing JSON/msgpack bodies, query parameters and status codes.
+`?path=...`, traffic filters and snapshot `?mode=merge|replace` work unchanged. These aliases do not implement the new
+PUT/PATCH contract above. Old paths remain available even when aliases are enabled in 2.13.
+
+`clean_storage(path=...)` still calls its legacy endpoint, even with `admin_prefix`, because
+it returns `200` with `success: false` for a missing mock. Switch to `delete_mock(path)`, which
+returns `404` when the mock is missing. `clean_cache()` also stays on its legacy path in 2.13.
+
+### Understand the 2.13 warnings
+
+Every matched legacy service operation returns `Deprecation: @1789603200` (the announcement
+date, 2026-09-17 UTC) and a `Link` with `rel="deprecation"` pointing to this guide. The date
+syntax follows [RFC 9745](https://www.rfc-editor.org/rfc/rfc9745.html); it replaces the old
+non-standard `Deprecation: true` value. When aliases are enabled, another link with
+`rel="successor-version"` points to the replacement resource. Consult the table for the HTTP
+method: a URI alone does not tell you to change `POST` to `DELETE` or `PATCH`.
+The same notices accompany handled error responses. User mock responses are not marked.
+Aliases themselves have no route-deprecation header. Server warnings are logged once per
+operation per process, rather than for every request. No `Sunset` date is promised yet.
+
+Python emits `DeprecationWarning` for the synchronous client's upcoming transport change,
+`cache_time`, `clean_cache()` and `clean_storage(path=...)`. Python's standard warning filters
+control repetition and visibility; use `python -W default::DeprecationWarning -m pytest` to
+review them. Warnings do not change successful responses or retries. Projects treating warnings
+as errors should review these notices before enabling that policy for a dependency upgrade.
