@@ -6,13 +6,13 @@ Sequence cursors, traffic and requests in flight are intentionally not serialize
 
 import base64
 import binascii
-import json
 from typing import Any
 
 from fastapi import FastAPI
 from pydantic import ValidationError
 from starlette.routing import compile_path
 
+from proxy_mock.api.errors import safe_error_data
 from proxy_mock.api.schemas import MockResource
 from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.domain.models import RecordingEntry
@@ -224,7 +224,7 @@ def parse_snapshot(snapshot: Any) -> list[dict]:
                 value["recordings"] = []
             validated.append(value)
         except (ValidationError, ValueError, TypeError, AssertionError, SnapshotError) as err:
-            errors = json.loads(err.json()) if isinstance(err, ValidationError) else str(err)
+            errors = safe_error_data(err.errors()) if isinstance(err, ValidationError) else str(err)
             raise SnapshotError(
                 {"mock_index": index, "path": mock.get("path") if isinstance(mock, dict) else None, "errors": errors}
             ) from err

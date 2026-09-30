@@ -1,6 +1,5 @@
 """Resource-oriented administrative API, isolated from user-defined HTTP routes."""
 
-import json
 import platform
 from copy import deepcopy
 from http import HTTPMethod
@@ -74,13 +73,13 @@ async def payload(request: Request) -> dict:
 def validate_mock(request: Request, data: dict) -> dict:
     unknown = set(data) - MockResource.model_fields.keys()
     if unknown:
-        raise api_error(422, "invalid_mock", "Unknown mock fields", sorted(unknown))
+        raise api_error(422, "invalid_mock", "Unknown mock fields", sorted(unknown, key=str))
     try:
         value = MockResource.model_validate(data).model_dump()
         value["path"] = validate_mock_path(request.app.state.mock_app, data["path"])
         return value
     except ValidationError as err:
-        raise api_error(422, "invalid_mock", "Invalid mock configuration", json.loads(err.json())) from err
+        raise api_error(422, "invalid_mock", "Invalid mock configuration", err.errors()) from err
     except (ValueError, TypeError, AssertionError) as err:
         raise api_error(422, "invalid_path", str(err)) from err
 
@@ -236,7 +235,7 @@ async def patch_settings(request: Request):
     try:
         changes = TrafficSettingsSchema.model_validate(data).model_dump(exclude_unset=True)
     except ValidationError as err:
-        raise api_error(422, "invalid_settings", "Invalid traffic settings", json.loads(err.json())) from err
+        raise api_error(422, "invalid_settings", "Invalid traffic settings", err.errors()) from err
     async with request.app.state.admin_lock:
         if "max_items" in changes:
             await request.app.state.traffic_store.set_max_items(changes["max_items"])
@@ -284,7 +283,7 @@ async def patch_sequence_state(
     try:
         SequenceStatePatch.model_validate(data)
     except ValidationError as err:
-        raise api_error(422, "invalid_sequence_state", "Position must be zero", json.loads(err.json())) from err
+        raise api_error(422, "invalid_sequence_state", "Position must be zero", err.errors()) from err
     return await sequence_state(request, path, rule, reset=True)
 
 
