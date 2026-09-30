@@ -34,7 +34,9 @@ def response_headers(headers, *, preserve_length: bool = False) -> list[list[str
         "content-length",
         "x-proxy-mock-recording",
     }
-    if preserve_length:
+    # A HEAD reply has no body from which to recover the decoded representation length.
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if preserve_length and encoding in {"", "identity"}:
         excluded.remove("content-length")
     excluded.update(value.strip().lower() for value in headers.get("connection", "").split(","))
     # Header convenience accessors may decode UTF-8. Use a reversible byte mapping instead.
@@ -45,9 +47,9 @@ def response_headers(headers, *, preserve_length: bool = False) -> list[list[str
     ]
 
 
-def recorded_response(data: dict) -> Response:
+def recorded_response(data: dict, *, method: str) -> Response:
     response = Response(base64.b64decode(data["body_b64"]), data["status_code"])
-    if any(name.lower() == "content-length" for name, _ in data["headers"]):
+    if method == "HEAD" or any(name.lower() == "content-length" for name, _ in data["headers"]):
         response.raw_headers = [(k, v) for k, v in response.raw_headers if k != b"content-length"]
     response.raw_headers.extend((name.encode("latin-1"), value.encode("latin-1")) for name, value in data["headers"])
     return response

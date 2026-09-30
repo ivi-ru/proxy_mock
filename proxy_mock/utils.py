@@ -98,7 +98,7 @@ def apply_mocks_factory(
                     return JSONResponse(
                         {"error": {"code": "recording_not_found", "message": "No recording matches this request"}}, 404
                     )
-                return recorded_response(entry["response"])
+                return recorded_response(entry["response"], method=request.method)
 
         # proxy
         if proxy_host := mock_data.get("proxy_host"):

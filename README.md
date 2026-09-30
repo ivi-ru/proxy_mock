@@ -291,7 +291,7 @@ the exact recorded request; duplicate paths/ids, unknown format 2 fields, invali
 bodies, and recording collections exceeding their configured count/byte budgets return `422`.
 Imported data is never silently evicted to fit limits. Binary config sections use either
 `body` or `body_b64`, never both. Recorded bodies always use canonical base64 strings, and
-recorded header pairs preserve duplicates and Latin-1 octets. `HEAD` recordings retain a
+recorded header pairs preserve duplicates and Latin-1 octets. `HEAD` recordings may retain a
 single numeric representation length; HEAD, 204 and 304 replies have empty bodies.
 
 Snapshot merge replaces each supplied mock's configuration and recordings in full; omitted
@@ -613,7 +613,9 @@ allowlist and proxy-loop rejections are not recorded. Replay never falls back to
 rules or `mock_data`. A missing key returns `404` with
 `{"error": {"code": "recording_not_found", "message": "No recording matches this request"}}`.
 Saved replies can be replayed repeatedly without consumption. `HEAD` has its own key and keeps
-the upstream representation length. Bodies are captured after transport decompression;
+the upstream representation length when supplied for an uncompressed response. A missing length
+stays absent on replay. Compressed HEAD lengths are omitted because the decoded representation
+length cannot be recovered without its body. Bodies are captured after transport decompression;
 content encoding, ordinary content length and hop-by-hop headers are removed. Response length
 is regenerated, and repeated headers such as `Set-Cookie` are preserved.
 

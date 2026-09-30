@@ -5,6 +5,9 @@ Prepared locally as version 3.0.0. This release has not been published.
 
 * Invalid msgpack fields, including arbitrary binary values and mixed key types, return
   structured administrative validation errors without changing existing configuration.
+* HEAD record/replay preserves absent representation lengths instead of inventing zero.
+  Compressed HEAD lengths are omitted when their content encoding is removed; ordinary
+  HEAD lengths and empty GET responses retain their existing behavior.
 
 * **Breaking: administrative REST API.** The configurable administrative namespace defaults
   to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are

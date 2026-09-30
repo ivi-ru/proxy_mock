@@ -18,7 +18,13 @@ from tests.test_admin_migration import admin_server as admin_server
 @pytest.fixture
 def upstream():
     state = SimpleNamespace(
-        calls=[], status=200, body=b"\x00\xffrecorded", headers=[], entered=threading.Event(), gate=None
+        calls=[],
+        status=200,
+        body=b"\x00\xffrecorded",
+        headers=[],
+        head_content_length=True,
+        entered=threading.Event(),
+        gate=None,
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -32,7 +38,8 @@ def upstream():
             self.send_response(status)
             for name, value in headers:
                 self.send_header(name, value)
-            self.send_header("Content-Length", str(len(response_body)))
+            if self.command != "HEAD" or state.head_content_length:
+                self.send_header("Content-Length", str(len(response_body)))
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(response_body)
@@ -391,6 +398,62 @@ def test_head_recording_is_distinct_and_keeps_representation_length(client, upst
     response = client.execute_request("HEAD", "/recorded")
     assert response.content == b"" and response.headers["Content-Length"] == first.headers["Content-Length"]
     assert client.execute_request("GET", "/recorded").status_code == 404
+    assert len(upstream.calls) == 1
+
+
+@pytest.mark.parametrize("restore_snapshot", [False, True])
+def test_head_without_representation_length_does_not_gain_zero_on_replay(client, upstream, restore_snapshot):
+    upstream.head_content_length = False
+    upstream.body = b"a nonempty representation"
+    configure(client, upstream)
+    original = client.execute_request("HEAD", "/recorded")
+    assert original.status_code == 200 and original.content == b""
+    assert "Content-Length" not in original.headers
+    get_response = client.execute_request("GET", "/recorded")
+    assert get_response.content == upstream.body
+    assert int(get_response.headers["Content-Length"]) == len(upstream.body)
+    replay(client)
+    if restore_snapshot:
+        snapshot = client.export_mocks()
+        client.clean_storage()
+        assert client.import_mocks(snapshot, mode="replace")["success"]
+    response = client.execute_request("HEAD", "/recorded")
+    assert response.status_code == 200 and response.content == b""
+    assert "Content-Length" not in response.headers
+    get_response = client.execute_request("GET", "/recorded")
+    assert get_response.content == upstream.body
+    assert int(get_response.headers["Content-Length"]) == len(upstream.body)
+    assert len(upstream.calls) == 2
+
+
+def test_compressed_head_omits_unknown_decoded_representation_length(client, upstream):
+    body = b"a decoded representation" * 20
+    upstream.body = gzip.compress(body)
+    upstream.headers = [("Content-Encoding", "gzip")]
+    configure(client, upstream)
+    for mode in ("record", "replay"):
+        if mode == "replay":
+            replay(client)
+        response = client.execute_request("HEAD", "/recorded")
+        assert response.status_code == 200 and response.content == b""
+        assert "Content-Encoding" not in response.headers
+        assert "Content-Length" not in response.headers
+        get_response = client.execute_request("GET", "/recorded")
+        assert get_response.content == body
+        assert int(get_response.headers["Content-Length"]) == len(body)
+    assert len(upstream.calls) == 2
+
+
+def test_empty_get_replay_keeps_zero_content_length(client, upstream):
+    upstream.body = b""
+    configure(client, upstream)
+    original = client.execute_request("GET", "/recorded")
+    assert original.status_code == 200 and original.content == b""
+    assert original.headers["Content-Length"] == "0"
+    replay(client)
+    response = client.execute_request("GET", "/recorded")
+    assert response.status_code == 200 and response.content == b""
+    assert response.headers["Content-Length"] == "0"
     assert len(upstream.calls) == 1
 
 
