@@ -133,12 +133,14 @@ def create_app() -> ProxyMockApp:
     app.state.admin_app = admin
     app.openapi = admin.openapi
 
+    app.add_middleware(AdminDispatch, admin=admin, prefix=prefix)
+
+    # Added last, so it wraps AdminDispatch: administrative requests are logged too, with the
+    # method the client sent rather than the GET that HEAD is dispatched as.
     @app.middleware("http")
     @log_request
     async def request_middleware(request: Request, call_next):
         return await call_next(request)
-
-    app.add_middleware(AdminDispatch, admin=admin, prefix=prefix)
 
     @app.exception_handler(404)
     async def custom_404_handler(request: Request, exc):

@@ -17,7 +17,7 @@ from proxy_mock.api.schemas import MockResource
 from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.domain.models import RecordingEntry
 from proxy_mock.services.mock_service import cleanup_storage, mock_initialization, validate_mock_path
-from proxy_mock.services.recordings import recording_id, recording_size
+from proxy_mock.services.recordings import UNREPLAYABLE_HEADERS, recording_id, recording_size
 
 SNAPSHOT_FORMAT = 2
 SNAPSHOT_PROTOCOL = "http"
@@ -128,18 +128,6 @@ def _validate_recordings(mock: dict, entries: Any) -> list[dict]:
     if len(entries) > config["max_items"]:
         raise ValueError("Recording count exceeds max_items")
     validated, seen, total = [], set(), 0
-    excluded = {
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-        "content-encoding",
-        "x-proxy-mock-recording",
-    }
     for raw_entry in entries:
         entry = RecordingEntry.model_validate(raw_entry).model_dump()
         request, response = entry["request"], entry["response"]
@@ -158,7 +146,7 @@ def _validate_recordings(mock: dict, entries: Any) -> list[dict]:
         seen.add(entry["id"])
         lengths = []
         for name, value in response["headers"]:
-            if name.lower() in excluded:
+            if name.lower() in UNREPLAYABLE_HEADERS:
                 raise ValueError("Recorded replies must not contain transport or diagnostic headers")
             if name.lower() == "content-length":
                 lengths.append(value)

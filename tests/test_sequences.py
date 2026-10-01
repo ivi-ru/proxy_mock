@@ -1,12 +1,18 @@
 """Ordered responses are reserved atomically and managed through a state resource."""
 
 import asyncio
+import logging
 import time
+from types import SimpleNamespace
 
 import httpx2
 import pytest
+from starlette.requests import Request
 
 from proxy_mock.client import AsyncProxyMock, ProxyMock
+from proxy_mock.repositories.traffic_store import TrafficStore
+from proxy_mock.services.rule_engine import apply_rules
+from proxy_mock.services.sequences import ResponseSequence
 from tests.test_admin_migration import admin_server as admin_server
 
 
@@ -288,3 +294,35 @@ def test_sequence_state_is_documented_without_action_routes(client):
     assert set(resource) == {"get", "patch"}
     assert "application/json" in resource["patch"]["requestBody"]["content"]
     assert not any("reset" in path for path in paths)
+
+
+def test_proxied_rule_does_not_advance_its_sequence():
+    """The API rejects this combination; the engine must still not discard a reserved response."""
+
+    async def scenario():
+        upstream = httpx2.MockTransport(lambda request: httpx2.Response(200, text="upstream"))
+        async with httpx2.AsyncClient(transport=upstream) as http_client:
+            app = SimpleNamespace(
+                logger=logging.getLogger(__name__),
+                state=SimpleNamespace(http_client=http_client, traffic_store=TrafficStore()),
+            )
+            request = Request(
+                {
+                    "type": "http",
+                    "method": "GET",
+                    "path": "/ordered",
+                    "raw_path": b"/ordered",
+                    "query_string": b"",
+                    "headers": [],
+                    "server": ("testserver", 80),
+                    "scheme": "http",
+                },
+                receive=lambda: asyncio.sleep(0, {"type": "http.request", "body": b"", "more_body": False}),
+            )
+            rule = {"input_data": {"proxy_host": "http://upstream.test"}, "output_data": {"body": "static"}}
+            cursor = ResponseSequence(sequence("A", "B"))
+            response = await apply_rules(app, request, [rule], sequences={0: cursor})
+            assert response.body == b"upstream"
+            assert (await cursor.state())["position"] == 0
+
+    asyncio.run(scenario())

@@ -10,15 +10,6 @@ from proxy_mock.services.sequences import build_sequences
 from proxy_mock.utils import apply_mocks_factory
 
 
-def normalize_path(path: str) -> str:
-    path = (path or "").split("?")[0].strip()
-    if not path.startswith("/"):
-        path = "/" + path
-    if path != "/" and path.endswith("/"):
-        path = path.rstrip("/")
-    return path
-
-
 def validate_mock_path(app: FastAPI, path: str) -> str:
     """Validate before changing storage or routes, including during snapshot import."""
     normalized = normalize_mock_path(path)
@@ -30,7 +21,7 @@ def validate_mock_path(app: FastAPI, path: str) -> str:
 
 
 def _route_candidates(path: str) -> set[str]:
-    normalized = normalize_path(path)
+    normalized = normalize_mock_path(path)
     candidates = {normalized}
     if normalized != "/":
         candidates.add(normalized + "/")
@@ -40,8 +31,8 @@ def _route_candidates(path: str) -> set[str]:
 def remove_runtime_routes(app: FastAPI, path: str) -> None:
     """Remove the dynamically added routes of a mock (the path and its trailing-slash variant)."""
     candidates = _route_candidates(path)
-    app.state.sequences.pop(normalize_path(path), None)
-    recordings = app.state.recordings.pop(normalize_path(path), None)
+    app.state.sequences.pop(normalize_mock_path(path), None)
+    recordings = app.state.recordings.pop(normalize_mock_path(path), None)
     if recordings is not None:
         recordings.retire()
     for route in list(app.routes):
@@ -54,7 +45,7 @@ async def return_mock_data(app: FastAPI, path: str) -> dict | None:
 
 
 async def create_mock_data(app: FastAPI, **kwargs) -> dict:
-    kwargs["path"] = normalize_path(kwargs["path"])
+    kwargs["path"] = normalize_mock_path(kwargs["path"])
     return await app.state.mock_storage.set_mock_data(**kwargs)
 
 
@@ -97,7 +88,7 @@ async def mock_initialization(
     mock_data["path"] = validate_mock_path(app, mock_data["path"])
     await create_mock_data(app, **mock_data)
 
-    normalized_path = normalize_path(mock_data["path"])
+    normalized_path = normalize_mock_path(mock_data["path"])
     previous = app.state.sequences.get(normalized_path, {})
     old_recordings = app.state.recordings.get(normalized_path) if preserve_recordings else None
     remove_runtime_routes(app, normalized_path)

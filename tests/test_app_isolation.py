@@ -1,11 +1,14 @@
 """Each application owns its mock configuration, routes and response state."""
 
 import asyncio
+import json
+import logging
 from contextlib import asynccontextmanager
 
 import httpx2
 
 from proxy_mock.app import create_app
+from proxy_mock.core.logging import app_logger
 from tests.test_snapshot_v2 import snapshot_with_entry
 
 
@@ -81,3 +84,24 @@ def test_concurrent_applications_keep_configuration_recordings_and_sequences_ind
             ]
 
     asyncio.run(scenario())
+
+
+def test_administrative_and_user_requests_share_request_logging(caplog):
+    async def scenario():
+        async with application_client() as client:
+            assert (await client.put("/__admin/mocks?path=/logged", json={"path": "/logged"})).status_code == 201
+            assert (await client.head("/__admin/mocks?path=/logged")).status_code == 200
+            assert (await client.get("/logged")).status_code == 200
+
+    with caplog.at_level(logging.INFO, logger=app_logger.name):
+        asyncio.run(scenario())
+    handled = [
+        json.loads(record.getMessage().removeprefix("Handled request "))
+        for record in caplog.records
+        if record.getMessage().startswith("Handled request ")
+    ]
+    assert [(entry["method"], entry["path"], entry["status"]) for entry in handled] == [
+        ("PUT", "/__admin/mocks", 201),
+        ("HEAD", "/__admin/mocks", 200),
+        ("GET", "/logged", 200),
+    ]

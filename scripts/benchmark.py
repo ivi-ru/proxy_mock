@@ -3,6 +3,8 @@ More reliable benchmark for proxy_mock.
 
 Usage:
   python scripts/benchmark.py --host http://localhost:5000 --requests 500 --concurrency 100 --rounds 5
+
+Pass --admin-prefix when the server runs with a custom PROXY_MOCK_ADMIN_PREFIX.
 """
 
 import argparse
@@ -73,10 +75,11 @@ async def run_load(
     return Result(latencies_ms=latencies, duration_s=total)
 
 
-async def prepare_data(client: httpx2.AsyncClient) -> None:
-    await client.post("/storage/clean")
-    await client.post("/traffic/clean")
-    await client.post("/cache/clean")
+async def prepare_data(client: httpx2.AsyncClient, admin: str) -> None:
+    r = await client.delete(f"{admin}/mocks")
+    r.raise_for_status()
+    r = await client.delete(f"{admin}/traffic")
+    r.raise_for_status()
 
     base_mock = {
         "path": "/bench/mock",
@@ -96,14 +99,14 @@ async def prepare_data(client: httpx2.AsyncClient) -> None:
         ],
     }
 
-    r = await client.post("/configure_mock", json=base_mock)
-    r.raise_for_status()
-    r = await client.post("/configure_mock", json=rules_mock)
-    r.raise_for_status()
+    for mock in (base_mock, rules_mock):
+        r = await client.put(f"{admin}/mocks", params={"path": mock["path"]}, json=mock)
+        r.raise_for_status()
 
 
 async def scenario_round(
     client: httpx2.AsyncClient,
+    admin: str,
     requests_count: int,
     concurrency: int,
 ) -> dict[str, Result]:
@@ -126,7 +129,7 @@ async def scenario_round(
     rules_res = Result(rule_lat, time.perf_counter() - s)
 
     # 3) traffic read
-    traffic_res = await run_load(client, "GET", "/traffic", requests_count, concurrency)
+    traffic_res = await run_load(client, "GET", f"{admin}/traffic", requests_count, concurrency)
 
     return {"mock": mock_res, "rules": rules_res, "traffic": traffic_res}
 
@@ -153,6 +156,7 @@ def print_result_block(name: str, results: list[Result]) -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Reliable benchmark for proxy_mock")
     parser.add_argument("--host", default="http://localhost:5000")
+    parser.add_argument("--admin-prefix", default="/__admin")
     parser.add_argument("--requests", type=int, default=1000)
     parser.add_argument("--concurrency", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=200)
@@ -166,20 +170,22 @@ async def main() -> None:
     )
 
     async with httpx2.AsyncClient(base_url=args.host, timeout=args.timeout, limits=limits) as client:
-        await prepare_data(client)
+        admin = args.admin_prefix.rstrip("/")
+        await prepare_data(client, admin)
 
         # warmup
         if args.warmup > 0:
             await run_load(client, "GET", "/bench/mock", args.warmup, args.concurrency)
-            await run_load(client, "GET", "/traffic", args.warmup, args.concurrency)
+            await run_load(client, "GET", f"{admin}/traffic", args.warmup, args.concurrency)
 
         mock_rounds: list[Result] = []
         rules_rounds: list[Result] = []
         traffic_rounds: list[Result] = []
 
         for i in range(args.rounds):
-            await client.post("/traffic/clean")
-            round_res = await scenario_round(client, args.requests, args.concurrency)
+            r = await client.delete(f"{admin}/traffic")
+            r.raise_for_status()
+            round_res = await scenario_round(client, admin, args.requests, args.concurrency)
             mock_rounds.append(round_res["mock"])
             rules_rounds.append(round_res["rules"])
             traffic_rounds.append(round_res["traffic"])

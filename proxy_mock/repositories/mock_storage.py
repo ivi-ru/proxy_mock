@@ -3,16 +3,8 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 
+from proxy_mock.client.migration import normalize_mock_path
 from proxy_mock.domain.models import MockDataSchema, MockPathSchema
-
-
-def _normalize_path(path: str) -> str:
-    path = (path or "").split("?")[0].strip()
-    if not path.startswith("/"):
-        path = "/" + path
-    if path != "/" and path.endswith("/"):
-        path = path.rstrip("/")
-    return path
 
 
 class MockStorage:
@@ -32,7 +24,7 @@ class MockStorage:
         sequence: dict | None = None,
         recording: dict | None = None,
     ) -> dict:
-        normalized_path = _normalize_path(path)
+        normalized_path = normalize_mock_path(path)
 
         payload = MockPathSchema(
             methods=methods,
@@ -51,7 +43,7 @@ class MockStorage:
             return deepcopy(payload)
 
     async def get_mock_data(self, path: str) -> dict | None:
-        normalized_path = _normalize_path(path)
+        normalized_path = normalize_mock_path(path)
         async with self._lock:
             data = self._storage.get(normalized_path)
             return deepcopy(data) if data else None
@@ -70,6 +62,6 @@ class MockStorage:
         return True
 
     async def delete_mock_data(self, path: str) -> bool:
-        normalized_path = _normalize_path(path)
+        normalized_path = normalize_mock_path(path)
         async with self._lock:
             return self._storage.pop(normalized_path, None) is not None

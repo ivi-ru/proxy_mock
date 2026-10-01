@@ -65,7 +65,10 @@ async def apply_rules(
 
         await app.state.traffic_store.patch_last({"rule_extra_info": convert_bytes_to_str(rule.get("extra_info", {}))})
 
-        response_data = await sequences[rule_index].take() if rule_index in sequences else rule["output_data"]
+        # A proxied rule never serves its sequence, so it must not advance the cursor.
+        response_data = rule["output_data"]
+        if rule_index in sequences and not rule_proxy_host:
+            response_data = await sequences[rule_index].take()
         if delay:
             await asyncio.sleep(delay)
 

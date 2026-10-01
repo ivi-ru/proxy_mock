@@ -19,9 +19,11 @@ def recording_size(entry: dict) -> int:
     return len(json.dumps(entry, ensure_ascii=True).encode())
 
 
-def response_headers(headers, *, preserve_length: bool = False) -> list[list[str]]:
-    # httpx decodes the body; framing and hop-by-hop metadata must not be replayed.
-    excluded = {
+# httpx decodes the body; framing and hop-by-hop metadata must not be replayed. Recording drops
+# these headers and snapshot import rejects them. Content-Length is decided per reply: only a
+# HEAD reply keeps it.
+UNREPLAYABLE_HEADERS = frozenset(
+    {
         "connection",
         "keep-alive",
         "proxy-authenticate",
@@ -31,13 +33,17 @@ def response_headers(headers, *, preserve_length: bool = False) -> list[list[str
         "transfer-encoding",
         "upgrade",
         "content-encoding",
-        "content-length",
         "x-proxy-mock-recording",
     }
+)
+
+
+def response_headers(headers, *, preserve_length: bool = False) -> list[list[str]]:
+    excluded = set(UNREPLAYABLE_HEADERS)
     # A HEAD reply has no body from which to recover the decoded representation length.
     encoding = headers.get("content-encoding", "").strip().lower()
-    if preserve_length and encoding in {"", "identity"}:
-        excluded.remove("content-length")
+    if not (preserve_length and encoding in {"", "identity"}):
+        excluded.add("content-length")
     excluded.update(value.strip().lower() for value in headers.get("connection", "").split(","))
     # Header convenience accessors may decode UTF-8. Use a reversible byte mapping instead.
     return [
