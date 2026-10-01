@@ -86,18 +86,33 @@ def test_concurrent_applications_keep_configuration_recordings_and_sequences_ind
     asyncio.run(scenario())
 
 
-def test_administrative_and_user_requests_share_request_logging(caplog):
+class _RecordCollector(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+def test_administrative_and_user_requests_share_request_logging():
     async def scenario():
         async with application_client() as client:
             assert (await client.put("/__admin/mocks?path=/logged", json={"path": "/logged"})).status_code == 201
             assert (await client.head("/__admin/mocks?path=/logged")).status_code == 200
             assert (await client.get("/logged")).status_code == 200
 
-    with caplog.at_level(logging.INFO, logger=app_logger.name):
+    # The handler sits on the application logger itself: caplog listens on the root logger, and
+    # whether uvicorn's logger propagates there depends on the uvicorn version.
+    collector = _RecordCollector()
+    app_logger.addHandler(collector)
+    try:
         asyncio.run(scenario())
+    finally:
+        app_logger.removeHandler(collector)
     handled = [
         json.loads(record.getMessage().removeprefix("Handled request "))
-        for record in caplog.records
+        for record in collector.records
         if record.getMessage().startswith("Handled request ")
     ]
     assert [(entry["method"], entry["path"], entry["status"]) for entry in handled] == [
