@@ -1,8 +1,10 @@
 services:
   proxy-mock:
-    image: ${PROXY_MOCK_IMAGE:-ghcr.io/ivi-ru/proxy_mock:2.12.0}
+    image: ${PROXY_MOCK_IMAGE:-proxy-mock:local}
+    build:
+      context: ../..
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/proxy_mock', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/__admin', timeout=2)"]
       interval: 1s
       timeout: 3s
       retries: 30

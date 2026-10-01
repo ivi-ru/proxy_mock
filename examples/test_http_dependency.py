@@ -2,13 +2,13 @@
 
 import json
 
-import requests
+import httpx2
 
 
 def test_http_dependency(proxy_mock, proxy_mock_url):
     proxy_mock.configure_mock(path="/inventory/sku-42", methods=["GET"], body={"available": 3})
 
-    response = requests.get(f"{proxy_mock_url}/inventory/sku-42", timeout=5)
+    response = httpx2.get(f"{proxy_mock_url}/inventory/sku-42", timeout=5)
 
     assert response.status_code == 200
     assert response.json() == {"available": 3}
@@ -27,7 +27,7 @@ def test_reuse_a_mock_snapshot(proxy_mock, proxy_mock_url, tmp_path):
     snapshot = json.loads(snapshot_file.read_text(encoding="utf-8"))
     proxy_mock.import_mocks(snapshot, mode="replace")
 
-    response = requests.get(f"{proxy_mock_url}/catalog/42", timeout=5)
+    response = httpx2.get(f"{proxy_mock_url}/catalog/42", timeout=5)
 
     assert response.status_code == 200
     assert response.json() == {"title": "Example article"}

@@ -2,15 +2,15 @@
 
 import base64
 
+import httpx2
 import pytest
-import requests
 
 from proxy_mock.client import ProxyMock
 from proxy_mock.services.snapshot import SNAPSHOT_FORMAT
 from tests import HOST
 from tests.constants import BYTE_RESPONSE
 
-SNAPSHOT_URL = f"{HOST}/storage/snapshot"
+SNAPSHOT_URL = f"{HOST}/__admin/snapshot"
 
 
 class TestExport:
@@ -102,22 +102,22 @@ class TestImportValidation:
         ],
     )
     def test_invalid_snapshot_is_rejected(self, client: ProxyMock, snapshot):
-        response = requests.post(SNAPSHOT_URL, json=snapshot, timeout=10)
+        response = httpx2.patch(SNAPSHOT_URL, json=snapshot, timeout=10)
 
         assert response.status_code == 422
         assert not response.json()["success"]
 
     def test_broken_json_is_rejected(self, client: ProxyMock):
-        response = requests.post(
-            SNAPSHOT_URL, data=b"{not json", headers={"Content-Type": "application/json"}, timeout=10
+        response = httpx2.patch(
+            SNAPSHOT_URL, content=b"{not json", headers={"Content-Type": "application/json"}, timeout=10
         )
 
         assert response.status_code == 400
 
-    def test_unknown_mode_is_rejected(self, client: ProxyMock):
-        response = requests.post(f"{SNAPSHOT_URL}?mode=wipe", json={"format": 1, "mocks": []}, timeout=10)
+    def test_legacy_mode_parameter_is_rejected(self, client: ProxyMock):
+        response = httpx2.patch(f"{SNAPSHOT_URL}?mode=wipe", json={"format": 1, "mocks": []}, timeout=10)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_nothing_is_written_when_one_mock_is_invalid(self, client: ProxyMock, configure_mock):
         snapshot = {
@@ -128,9 +128,9 @@ class TestImportValidation:
             ],
         }
 
-        response = requests.post(f"{SNAPSHOT_URL}?mode=replace", json=snapshot, timeout=10)
+        response = httpx2.put(SNAPSHOT_URL, json=snapshot, timeout=10)
 
         assert response.status_code == 422
-        assert response.json()["error"]["mock_index"] == 1
+        assert response.json()["error"]["details"]["mock_index"] == 1
         # Validation happens before anything is written, so the existing storage is untouched.
         assert list(client.get_storage()["data"]) == ["/test"]

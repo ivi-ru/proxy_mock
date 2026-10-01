@@ -41,9 +41,13 @@ should hand-roll. Everything below that threshold gets written here instead.
 The reason is the second audience: projects that install proxy-mock into their own test
 environment inherit every dependency and every version constraint we take on.
 
-Current footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
+Historical footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
 distributions** — the package plus 21 dependencies, down from 26 distributions in 2.11.0.
-The install split and synchronous client migration in 3.0 will reduce this further.
+3.0 split the install and moved the synchronous client to `httpx2`. A clean installation of
+the 3.0.0 wheel on macOS/Python 3.13, measured on 2026-09-30,
+resolved **9 distributions** for the base package and **19** with the server extra, including
+proxy-mock and excluding test/development tools. These use newly resolved dependencies; counts
+can change as transitive releases evolve.
 
 ### Public API contract
 
@@ -57,8 +61,8 @@ The install split and synchronous client migration in 3.0 will reduce this furth
 **Internal** — may change in any release, without notice:
 
 - `proxy_mock.services.*`, `proxy_mock.repositories.*`, `proxy_mock.core.*`, `proxy_mock.utils`
-- `proxy_mock.any_catcher` (currently documented as the uvicorn entry point; replaced by the
-  console script in 2.11 and by `proxy_mock.app:create_app` in 3.0)
+- `proxy_mock.any_catcher` (the historical uvicorn entry point; use the console script or
+  `proxy_mock.app:create_app` for the supported entry points)
 - the module layout in general
 
 ### Breaking changes
@@ -89,8 +93,6 @@ Additive: nothing here changes existing behaviour.
   The snapshot format is a public contract from day one: a `"format": 1` envelope, binary bodies
   carried as `body_b64`, and a `protocol` field reserved so that non-HTTP mocks would not force
   a format 2. The endpoints move under the service prefix in 3.0.
-- **Container image on GHCR**, published by the release workflow, so that using proxy-mock in
-  someone else's CI does not require building the image first.
 - **CI.** A job that resolves the declared lower bounds instead of only the locked versions; a
   smoke test that installs the built wheel into a clean virtualenv and runs the pytest fixture
   against it; a check that the container image actually starts and answers.
@@ -125,9 +127,9 @@ other caller-visible behaviour. This part moves to 3.0 under the public API cont
 
 ---
 
-## 2.13 — migration preparation
+## 2.13 — migration preparation (released)
 
-The final planned feature release before 3.0 keeps 2.x behaviour and prepares consumers:
+The final planned feature release before 3.0 kept 2.x behaviour and prepared consumers:
 
 - Mark every legacy administrative operation with migration headers and bounded log warnings.
 - Offer opt-in resource paths through `PROXY_MOCK_ADMIN_PREFIX`, with explicit client support.
@@ -138,7 +140,7 @@ The final planned feature release before 3.0 keeps 2.x behaviour and prepares co
 
 ---
 
-## 3.0 — one breaking release
+## 3.0 — one breaking release (released)
 
 ### RESTful administrative API behind a prefix
 
@@ -150,59 +152,119 @@ error responses. This includes mock configuration and storage, traffic, settings
 and service information. The same contract applies to the new 3.0 features. Moving the old
 action-style endpoints behind a prefix alone does not satisfy this requirement.
 
-Today that isolation depends on how FastAPI nests routers added through `include_router` — see
-the docstring in `tests/test_service_routes.py` — which is why `fastapi>=0.137` is pinned as a
-lower bound. It also means configuring a mock for `/proxy_mock` currently returns `success: true`
-and then never serves that mock. After the move the isolation is ours, and the FastAPI floor can
-be lowered again.
+Released in 3.0.0 on 2026-10-02, together with the other changes below.
+The namespace also contains Swagger UI, ReDoc and OpenAPI. Former service paths become ordinary
+mock paths. The FastAPI lower bound remains unchanged until a separate compatibility check
+justifies changing it.
 
-| 2.x | 3.0 |
-|-----|-----|
-| `GET /proxy_mock` | `GET /__admin` |
-| `POST /configure_mock`, `PATCH /configure_mock` | `POST /__admin/mocks`, `PATCH /__admin/mocks` |
-| `GET /storage`, `DELETE /storage`, `POST /storage/clean` | `GET /__admin/mocks`, `DELETE /__admin/mocks` |
-| `GET /traffic`, `DELETE /traffic`, `POST /traffic/clean` | `GET /__admin/traffic`, `DELETE /__admin/traffic` |
-| `GET /traffic/settings`, `PATCH /traffic/settings`, `POST /traffic/settings` | `GET /__admin/settings`, `PATCH /__admin/settings` |
-| `GET` / `POST /storage/snapshot` | `GET` / `POST /__admin/snapshot` |
-| `POST /cache/clean` | removed with the cache |
+| Resource | Methods | Contract |
+|----------|---------|----------|
+| `/__admin` | `GET` | Instance summary |
+| `/__admin/mocks` | `GET`, `DELETE` | Read or clear the collection |
+| `/__admin/mocks?path=<encoded-path>` | `GET`, `PUT`, `PATCH`, `DELETE` | Read, create/replace, partially update, or delete one mock |
+| `/__admin/traffic` | `GET`, `DELETE` | Read with filters, or clear all traffic without filters |
+| `/__admin/settings` | `GET`, `PATCH` | Read or partially update recording settings |
+| `/__admin/snapshot` | `GET`, `PUT`, `PATCH` | Export format 2; replace or merge formats 1 and 2 |
+| `/__admin/recordings?path=<encoded-path>` | `GET`, `DELETE` | Inspect or delete recorded replies; optional `id` selects one |
+| `/__admin/sequence-state?path=<encoded-path>` | `GET`, `PATCH` | Inspect or restart a mock/rule sequence cursor |
+
+A mock's query parameter is part of its resource URI. `PUT` creates with `201` or replaces with
+`200`; `PATCH` requires an existing mock and preserves omitted fields. Missing item reads,
+updates and deletes return `404`. Nullable values can be cleared with explicit `null`, and
+arrays are replaced as a whole. Snapshot merge replaces complete mocks by path; it is a
+resource-specific patch format, not JSON Merge Patch. Administrative errors use the common
+`success: false` / `error: {code, message, details?}` shape. No action-style `POST` aliases remain.
+See [README.md](README.md#administrative-rest-resources) for the current contract and
+[MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
+
+Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
 
-`cache_time`, `POST /cache/clean` and the cache service are deleted. Caching a mock response is
+`cache_time`, `clean_cache()`, the cache resource, response-cache code and TTL storage are
+deleted. Caching a mock response is
 close to a no-op by construction — the mock is already static and cheap — and the one case where
 it does something, a proxied response, is better served by record & replay, which is explicit
 about what was recorded and lets you look at it.
 
+The clients reject the removed argument before network access; HTTP mock configuration
+rejects it with `422`. Legacy snapshots may contain disabled null/zero cache settings, which
+are discarded on import. Enabled settings are rejected before mutation so proxying cannot
+silently change into repeated upstream access. See [the migration guide](MIGRATING.md#removed-response-caching).
+
 ### Record & replay
 
-Required for 3.0: proxy a request to the real upstream and store its response as a mock that
-can be inspected and replayed. This makes recording explicit and replaces the useful proxied
-response use case of the removed cache.
+Mock-level `recording` configuration explicitly selects `record` or
+`replay`. Recorded replies are inspectable and removable through the REST recording resource.
+Exact matching uses method, raw path/query and body bytes, with optional selected headers.
+Replay never contacts the upstream; missing keys return `404`. Collections are bounded by
+count and serialized bytes, and repeated keys keep the last completed reply. Transport
+failures are excluded; upstream HTTP errors and binary replies are retained. This replaces
+the useful proxied response use case of the removed cache.
+
+Format 2 snapshots preserve completed recordings and their eviction order; import validates
+keys, headers, bodies and limits before changing state. Format 1 imports reject record/replay
+explicitly. See the
+[record/replay contract](README.md#recordreplay).
 
 ### Response sequences
 
-Required for 3.0: configure an ordered sequence of responses for a single path, such as A on
-the first call and B on the second. Build on the existing rule engine and document sequence
-exhaustion and reset behaviour without introducing a scenario engine.
+A mock or rule can serve an ordered response list. The default exhaustion
+policy is `repeat_last`; `error` returns `409`. Cursors are reserved atomically before delays,
+inspected with `GET /__admin/sequence-state`, and restarted with `PATCH {"position": 0}`.
+Mock replacement restarts cursors; unrelated partial updates preserve them. Matching and rule
+priority stay unchanged. This remains a response list rather than a scenario engine.
+
+Format 2 snapshots preserve sequence definitions and binary replies. Imported cursors restart
+at zero; export leaves positions unchanged. Format 1 remains readable for ordinary mocks. See the complete
+[sequence contract](README.md#response-sequences).
 
 ### Synchronous client transport
 
-Both clients use `httpx2`, removing `requests` and the dependencies used only by it. The
-migration guide must cover the new response type, exception classes, request keyword arguments,
-redirect defaults, timeouts and session customisation. Existing `requests.Response` behaviour
-remains available throughout 2.x.
+Both clients use `httpx2`, removing `requests` and the dependencies
+used only by it. The [migration guide](MIGRATING.md#python-client-transport)
+covers native responses, shared exception classes, body encoding, redirect defaults, timeouts
+and native-client injection with explicit ownership. Existing `requests.Response` behaviour
+remains available in 2.x.
 
 ### Install split
 
-The base install becomes the clients only; the server moves behind an
-extra, `proxy_mock[server]`. Exact distribution counts will be measured at release time.
-A project that installs proxy-mock to talk to a running
-instance stops inheriting FastAPI, uvicorn and their constraints.
+The base install depends on `httpx2` and `msgpack`, while
+`proxy_mock[server]` adds FastAPI, Pydantic and uvicorn with unchanged bounds. The same wheel
+ships both clients and server code. External pytest fixtures and CLI help/version work with
+the base install; local startup gives an installation hint when dependencies are missing.
+The measured distribution counts are recorded in the dependency budget above. A project that talks to a running
+instance no longer inherits the server dependencies and their constraints.
 
 ### Entry point
 
-The documented entry point becomes the `proxy-mock` console script, with
-`proxy_mock.app:create_app` for embedding. `proxy_mock.any_catcher:app` stops being documented.
+The documented entry points are the `proxy-mock` console script and
+`proxy_mock.app:create_app` for embedding, both using the server extra.
+`proxy_mock.any_catcher:app` appears only as a historical migration reference.
+The [runnable examples](examples/README.md) cover REST configuration, response sequences,
+offline snapshot replay, both clients, and a storefront with a separate HTTP dependency.
+
+### Release validation
+
+Completed on macOS on 2026-09-30 for the 3.0.0 package:
+
+| Check | Result |
+|-------|--------|
+| Locked dependencies on Python 3.11.13, 3.12.11, 3.13.3 and 3.14.7 | 641 tests passed on each interpreter |
+| Lowest compatible direct dependencies on Python 3.11 | 641 tests passed; FastAPI 0.137.0, httpx2 2.0.0, msgpack 1.0.4 and uvicorn 0.27.0 |
+| Coverage run on Python 3.13 | 641 tests passed; 98% coverage |
+| Ruff and lockfile consistency | Passed |
+| Wheel built from the source distribution | Built with version 3.0.0 |
+| Clean base/server wheel installs, examples and README quick start | 28 checks passed outside the source tree |
+| Docker image and Compose storefront | Built and served version 3.0.0; container-to-container request and captured traffic verified |
+
+Additional binary validation, HEAD metadata and application isolation regressions brought the
+suite to 668 tests. All passed on macOS with locked and lowest compatible dependencies;
+coverage remained 98%. The rebuilt wheel also passed the 28 isolated installation and example
+checks above.
+
+Review fixes before the release brought the suite to 670 tests. CI passed them on Python
+3.11–3.14 with locked dependencies and on Python 3.11 with the lowest compatible ones.
 
 ---
 

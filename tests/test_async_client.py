@@ -70,8 +70,6 @@ class TestAsyncClient:
                     timeout=0.1,
                     rules=[{"input_data": {"body": {"k": 1}}, "output_data": {"body": "r"}}],
                     methods=["GET", "POST"],
-                    cache_time=5,
-                    custom_kwarg="y",
                 )
 
         assert run(scenario())["success"]
@@ -101,12 +99,13 @@ class TestAsyncClient:
         assert traffic["success"] and traffic["data"]
         assert storage["success"]
 
-    def test_clean_cache(self):
+    def test_clean_cache_is_removed(self):
         async def scenario():
             async with AsyncProxyMock(HOST) as c:
-                return await c.clean_cache()
+                with pytest.raises(AttributeError):
+                    await c.clean_cache()
 
-        assert run(scenario())["success"]
+        run(scenario())
 
     def test_traffic_settings(self):
         async def scenario():
@@ -134,7 +133,7 @@ class TestAsyncClient:
 
         delete_response, storage = run(scenario())
         assert delete_response["success"]
-        assert not storage["data"]
+        assert storage["error"]["code"] == "mock_not_found"
 
 
 class TestAsyncErrors:

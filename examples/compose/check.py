@@ -1,10 +1,12 @@
 """Configure the mock, call the storefront, and verify its outgoing request."""
 
 import json
+import os
 from urllib.request import Request, urlopen
 
-MOCK_URL = "http://proxy-mock:5000"
-APP_URL = "http://app:8000"
+MOCK_URL = os.getenv("MOCK_URL", "http://proxy-mock:5000").rstrip("/")
+APP_URL = os.getenv("APP_URL", "http://app:8000").rstrip("/")
+ADMIN_PREFIX = os.getenv("PROXY_MOCK_ADMIN_PREFIX", "/__admin")
 
 
 def request(url, method="GET", body=None):
@@ -16,11 +18,11 @@ def request(url, method="GET", body=None):
 
 
 def main():
-    request(f"{MOCK_URL}/storage", method="DELETE")
-    request(f"{MOCK_URL}/traffic", method="DELETE")
+    request(f"{MOCK_URL}{ADMIN_PREFIX}/mocks", method="DELETE")
+    request(f"{MOCK_URL}{ADMIN_PREFIX}/traffic", method="DELETE")
     configured = request(
-        f"{MOCK_URL}/configure_mock",
-        method="POST",
+        f"{MOCK_URL}{ADMIN_PREFIX}/mocks?path=%2Finventory%2Fsku-42",
+        method="PUT",
         body={"path": "/inventory/sku-42", "methods": ["GET"], "mock_data": {"body": {"available": 3}}},
     )
     assert configured["success"]
@@ -28,7 +30,7 @@ def main():
     product = request(f"{APP_URL}/products/sku-42")
     assert product == {"sku": "sku-42", "in_stock": True}, product
 
-    traffic = request(f"{MOCK_URL}/traffic?path=%2Finventory%2Fsku-42&method=GET")
+    traffic = request(f"{MOCK_URL}{ADMIN_PREFIX}/traffic?path=%2Finventory%2Fsku-42&method=GET")
     assert traffic["count"] == 1, traffic
     assert traffic["data"][0]["request_path"] == "/inventory/sku-42"
     assert traffic["data"][0]["request_method"] == "GET"

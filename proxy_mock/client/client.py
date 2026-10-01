@@ -1,87 +1,18 @@
-import warnings
 from http import HTTPMethod
 from typing import Any
-from urllib.parse import urlencode
 
-import msgpack
-
-from proxy_mock.client.migration import MIGRATION_URL
+from proxy_mock.client import calls
+from proxy_mock.client.calls import UNSET
 from proxy_mock.client.route import Route
-from proxy_mock.client.service_endpoints import Endpoints
-
-CONFIGURE_CONTENT_TYPE = "application/octet-stream"
-
-
-def _build_traffic_settings_payload(record_unknown_traffic: bool | None, max_items: int | None) -> dict:
-    """The endpoint accepts a partial update, so fields that were not supplied are left out."""
-    payload = {}
-    if record_unknown_traffic is not None:
-        payload["record_unknown_traffic"] = record_unknown_traffic
-    if max_items is not None:
-        payload["max_items"] = max_items
-    return payload
 
 
 class ProxyMock(Route):
+    def _call(self, call: calls.Call):
+        method, route, options = call
+        return super().execute_request_and_get_response_body(method, route, **options)
+
     def get_proxy_mock(self):
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.GET, self._service_endpoint(Endpoints.PROXY_MOCK)
-        )
-
-    def _build_mock_request_data(
-        self,
-        path: str,
-        body: Any = None,
-        headers: dict | None = None,
-        status_code: int | None = None,
-        extra_info: dict | None = None,
-        proxy_host: str | None = None,
-        timeout: float | None = None,
-        rules: list[dict] | None = None,
-        methods: list[str] | None = None,
-        cache_time: int | None = None,
-        include_body_if_none: bool = True,
-        **kwargs,
-    ) -> dict:
-        mock_data = {}
-        if include_body_if_none or body is not None:
-            mock_data["body"] = body
-        if status_code is not None:
-            mock_data["status_code"] = status_code
-        if headers is not None:
-            mock_data["headers"] = headers
-
-        request_data = {"path": path}
-        if methods is not None:
-            request_data["methods"] = methods
-        if mock_data:
-            request_data["mock_data"] = mock_data
-        if extra_info is not None:
-            request_data["extra_info"] = extra_info
-        if proxy_host is not None:
-            request_data["proxy_host"] = proxy_host
-        if timeout is not None:
-            request_data["timeout"] = timeout
-        if rules is not None:
-            request_data["rules"] = rules
-        if cache_time is not None:
-            warnings.warn(
-                f"cache_time is deprecated and will be removed in 3.0; see {MIGRATION_URL}",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            request_data["cache_time"] = cache_time
-
-        request_data.update(kwargs)
-        return request_data
-
-    def _send_configure(self, method: HTTPMethod, payload: dict):
-        return super().execute_request_and_get_response_body(
-            method=method,
-            route=self._service_endpoint(Endpoints.CONFIGURE_MOCK),
-            data=msgpack.packb(payload),
-            headers={"Content-Type": CONFIGURE_CONTENT_TYPE},
-        )
+        return self._call(calls.service_info(self.admin_prefix))
 
     def configure_mock(
         self,
@@ -94,11 +25,12 @@ class ProxyMock(Route):
         timeout: float | None = None,
         rules: list[dict] | None = None,
         methods: list[str] | None = None,
-        cache_time: int | None = None,
+        sequence: dict | None = None,
+        recording: dict | None = None,
         **kwargs,
     ):
-        payload = self._build_mock_request_data(
-            path=path,
+        payload = calls.mock_payload(
+            path,
             body=body,
             headers=headers,
             status_code=status_code,
@@ -107,28 +39,30 @@ class ProxyMock(Route):
             timeout=timeout,
             rules=rules,
             methods=methods,
-            cache_time=cache_time,
-            include_body_if_none=True,  # for configure the body may explicitly be None
+            sequence=sequence,
+            recording=recording,
             **kwargs,
         )
-        return self._send_configure(HTTPMethod.POST, payload)
+        return self._call(calls.configure(self.admin_prefix, HTTPMethod.PUT, payload))
 
     def patch_mock(
         self,
         path: str,
-        body: Any = None,
-        headers: dict | None = None,
-        status_code: int | None = None,
-        extra_info: dict | None = None,
-        proxy_host: str | None = None,
-        timeout: float | None = None,
-        rules: list[dict] | None = None,
-        methods: list[str] | None = None,
-        cache_time: int | None = None,
+        body: Any = UNSET,
+        headers: dict | None = UNSET,
+        status_code: int | None = UNSET,
+        extra_info: dict | None = UNSET,
+        proxy_host: str | None = UNSET,
+        timeout: float | None = UNSET,
+        rules: list[dict] | None = UNSET,
+        methods: list[str] | None = UNSET,
+        sequence: dict | None = UNSET,
+        recording: dict | None = UNSET,
         **kwargs,
     ):
-        payload = self._build_mock_request_data(
-            path=path,
+        payload = calls.mock_payload(
+            path,
+            include_none=True,
             body=body,
             headers=headers,
             status_code=status_code,
@@ -137,84 +71,54 @@ class ProxyMock(Route):
             timeout=timeout,
             rules=rules,
             methods=methods,
-            cache_time=cache_time,
-            include_body_if_none=False,  # for patch we do not send a body unless one is given
+            sequence=sequence,
+            recording=recording,
             **kwargs,
         )
-        return self._send_configure(HTTPMethod.PATCH, payload)
+        return self._call(calls.configure(self.admin_prefix, HTTPMethod.PATCH, payload))
 
     def get_traffic(self, path: str | None = None, method: str | None = None, limit: int | None = None):
-        query_params = {
-            **({"path": path} if path else {}),
-            **({"method": method} if method else {}),
-            **({"limit": limit} if limit is not None else {}),
-        }
-        full_path = f"{self._service_endpoint(Endpoints.TRAFFIC)}?{urlencode(query_params)}"
-        return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
+        return self._call(calls.get_traffic(self.admin_prefix, path, method, limit))
 
     def get_storage(self, path: str | None = None):
-        query_params = {**({"path": path} if path else {})}
-        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode(query_params)}"
-        return super().execute_request_and_get_response_body(HTTPMethod.GET, full_path)
+        return self._call(calls.get_mocks(self.admin_prefix, path))
 
-    def clean_storage(self, path: str | None = None):
-        """Delete mocks: all of them, or the one at `path`.
-
-        Passing a path is deprecated — use `delete_mock()`, which reports a missing mock with a
-        `404` instead of `success: false`.
-        """
-        if path:
-            warnings.warn(
-                "clean_storage(path=...) is deprecated and will be removed in 3.0; use delete_mock(path)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            full_path = f"{self._service_endpoint(Endpoints.STORAGE_CLEAN)}?{urlencode({'path': path})}"
-            return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path)
-
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.DELETE, self._service_endpoint(Endpoints.STORAGE)
-        )
+    def clean_storage(self):
+        """Delete all mocks. Use delete_mock(path) to delete one mock."""
+        return self._call(calls.delete_mocks(self.admin_prefix))
 
     def export_mocks(self):
         """Export every configured mock as a snapshot document."""
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.GET, self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)
-        )
+        return self._call(calls.export_snapshot(self.admin_prefix))
 
     def import_mocks(self, snapshot: dict, mode: str = "merge"):
         """Load a snapshot: `merge` keeps the configured mocks, `replace` clears them first."""
-        full_path = f"{self._service_endpoint(Endpoints.STORAGE_SNAPSHOT)}?{urlencode({'mode': mode})}"
-        return super().execute_request_and_get_response_body(HTTPMethod.POST, full_path, json=snapshot)
+        return self._call(calls.import_snapshot(self.admin_prefix, snapshot, mode))
 
     def delete_mock(self, path: str):
-        full_path = f"{self._service_endpoint(Endpoints.STORAGE)}?{urlencode({'path': path})}"
-        return super().execute_request_and_get_response_body(HTTPMethod.DELETE, full_path)
+        return self._call(calls.delete_mocks(self.admin_prefix, path))
 
     def clean_traffic(self):
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.DELETE, self._service_endpoint(Endpoints.TRAFFIC)
-        )
+        return self._call(calls.clean_traffic(self.admin_prefix))
 
     def get_traffic_settings(self):
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.GET, self._service_endpoint(Endpoints.TRAFFIC_SETTINGS)
-        )
+        return self._call(calls.get_traffic_settings(self.admin_prefix))
 
     def set_traffic_settings(self, record_unknown_traffic: bool | None = None, max_items: int | None = None):
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.PATCH,
-            self._service_endpoint(Endpoints.TRAFFIC_SETTINGS),
-            json=_build_traffic_settings_payload(record_unknown_traffic, max_items),
-        )
+        return self._call(calls.set_traffic_settings(self.admin_prefix, record_unknown_traffic, max_items))
 
-    def clean_cache(self):
-        """Deprecated: response caching and this endpoint are removed in 3.0."""
-        warnings.warn(
-            "clean_cache() is deprecated and will be removed in 3.0 together with response caching",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return super().execute_request_and_get_response_body(
-            HTTPMethod.POST, self._service_endpoint(Endpoints.CACHE_CLEAN)
-        )
+    def get_sequence_state(self, path: str, rule_index: int | None = None) -> dict:
+        """Read the cursor of a mock sequence, or a rule by its zero-based configuration index."""
+        return self._call(calls.get_sequence_state(self.admin_prefix, path, rule_index))
+
+    def reset_sequence(self, path: str, rule_index: int | None = None) -> dict:
+        """Restart a sequence through a partial update of its state resource."""
+        return self._call(calls.reset_sequence(self.admin_prefix, path, rule_index))
+
+    def get_recordings(self, path: str, recording_id: str | None = None) -> dict:
+        """Inspect recorded requests and responses; binary bodies are base64 strings."""
+        return self._call(calls.get_recordings(self.admin_prefix, path, recording_id))
+
+    def delete_recordings(self, path: str, recording_id: str | None = None) -> dict:
+        """Delete one recorded response or the entire collection belonging to a mock."""
+        return self._call(calls.delete_recordings(self.admin_prefix, path, recording_id))

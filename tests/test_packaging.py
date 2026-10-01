@@ -9,10 +9,13 @@ class TestLazyImport:
     def test_importing_the_client_does_not_import_the_server(self):
         # A project that only talks to a running instance should not pay for FastAPI and uvicorn.
         # Checked in a subprocess, because this test session has the server imported already.
-        code = "import sys, proxy_mock.client; print('fastapi' in sys.modules, 'uvicorn' in sys.modules)"
+        code = (
+            "import sys, proxy_mock.client; "
+            "print(any(name in sys.modules for name in ('fastapi', 'uvicorn', 'pydantic', 'starlette')))"
+        )
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
 
-        assert result.stdout.strip() == "False False"
+        assert result.stdout.strip() == "False"
 
     def test_create_app_is_still_reachable_from_the_package(self):
         import proxy_mock

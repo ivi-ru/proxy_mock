@@ -8,13 +8,13 @@ class TestShippedFixtures:
         # No conftest, no pytest_plugins line: the fixtures arrive through the pytest11 entry point.
         pytester.makepyfile(
             """
-            import requests
+            import httpx2
 
 
             def test_mock_answers(proxy_mock, proxy_mock_url):
                 proxy_mock.configure_mock(path="/from-plugin", body={"ok": True})
 
-                response = requests.get(f"{proxy_mock_url}/from-plugin", timeout=5)
+                response = httpx2.get(f"{proxy_mock_url}/from-plugin", timeout=5)
 
                 assert response.json() == {"ok": True}
 
@@ -40,3 +40,17 @@ class TestShippedFixtures:
         result = pytester.runpytest_subprocess("-q")
 
         result.assert_outcomes(passed=1)
+
+
+def test_fixture_uses_custom_admin_prefix(pytester, monkeypatch):
+    monkeypatch.setenv("PROXY_MOCK_ADMIN_PREFIX", "/fixture/admin")
+    pytester.makepyfile(
+        """
+        def test_custom_prefix(proxy_mock):
+            assert proxy_mock.admin_prefix == "/fixture/admin"
+            assert proxy_mock.configure_mock(path="/fixture-test", body="ok")["success"]
+            assert proxy_mock.execute_request("GET", "/fixture-test").text == "ok"
+            assert proxy_mock.get_proxy_mock()["version"]
+        """
+    )
+    pytester.runpytest_subprocess("-q").assert_outcomes(passed=1)

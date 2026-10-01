@@ -86,7 +86,7 @@ class TestConfigure:
 
         mock_response = client.execute_request(HTTPMethod.GET, configure_mock_data["path"])
         assert mock_response.content
-        assert mock_response.ok
+        assert mock_response.is_success
 
     def test_self_proxy_loop_is_broken(self, client: ProxyMock, configure_mock_data):
         # The mock proxies to itself, so the request comes back to us and must be stopped.
@@ -166,13 +166,13 @@ class TestConfigure:
             input_data_method[0] if input_data_method else HTTPMethod.POST,
             configure_mock_data["path"],
             params=rule_data["input_data"].get("query"),
-            data=input_data_body if isinstance(input_data_body, bytes) else json.dumps(input_data_body),
+            content=input_data_body if isinstance(input_data_body, bytes) else json.dumps(input_data_body),
             headers=rule_data["input_data"].get("headers"),
         )
 
         if rule_data["input_data"].get("proxy_host"):
             assert test_response.content
-            assert test_response.ok
+            assert test_response.is_success
             return
 
         assert test_response.elapsed.total_seconds() >= rule_data["input_data"].get("timeout", 0)

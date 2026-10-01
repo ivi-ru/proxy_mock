@@ -4,12 +4,11 @@ from enum import StrEnum
 
 
 class Endpoints(StrEnum):
-    PROXY_MOCK = "/proxy_mock"
-    CONFIGURE_MOCK = "/configure_mock"
-    STORAGE_CLEAN = "/storage/clean"
-    TRAFFIC_CLEAN = "/traffic/clean"
-    CACHE_CLEAN = "/cache/clean"
+    PROXY_MOCK = ""
+    CONFIGURE_MOCK = "/mocks"
     TRAFFIC = "/traffic"
-    TRAFFIC_SETTINGS = "/traffic/settings"
-    STORAGE = "/storage"
-    STORAGE_SNAPSHOT = "/storage/snapshot"
+    TRAFFIC_SETTINGS = "/settings"
+    STORAGE = "/mocks"
+    STORAGE_SNAPSHOT = "/snapshot"
+    SEQUENCE_STATE = "/sequence-state"
+    RECORDINGS = "/recordings"

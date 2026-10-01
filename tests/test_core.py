@@ -55,19 +55,25 @@ class TestVersionDetection:
 class TestConfigureParsing:
     def test_empty_body_returns_400(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.POST, "/configure_mock", data=b"", headers={"Content-Type": "application/json"}
+            HTTPMethod.PUT, "/__admin/mocks?path=/parse-test", content=b"", headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 400
 
     def test_bad_json_returns_400(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.POST, "/configure_mock", data="{bad", headers={"Content-Type": "application/json"}
+            HTTPMethod.PUT,
+            "/__admin/mocks?path=/parse-test",
+            content="{bad",
+            headers={"Content-Type": "application/json"},
         )
         assert response.status_code == 400
 
     def test_unsupported_content_type_returns_415(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.POST, "/configure_mock", data=b"whatever", headers={"Content-Type": "text/plain"}
+            HTTPMethod.PUT,
+            "/__admin/mocks?path=/parse-test",
+            content=b"whatever",
+            headers={"Content-Type": "text/plain"},
         )
         assert response.status_code == 415
 
@@ -75,9 +81,9 @@ class TestConfigureParsing:
         # Malformed msgpack (ExtraData/ValueError) must produce a 400, not a 500.
         for payload in (b"\xff\xff\xff", b"\x93\x01"):
             response = client.execute_request(
-                HTTPMethod.POST,
-                "/configure_mock",
-                data=payload,
+                HTTPMethod.PUT,
+                "/__admin/mocks?path=/parse-test",
+                content=payload,
                 headers={"Content-Type": "application/octet-stream"},
             )
             assert response.status_code == 400

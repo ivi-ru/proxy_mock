@@ -25,7 +25,7 @@ the README, and are not vulnerabilities:
   a request-forwarding tool (SSRF). `PROXY_MOCK_ALLOWED_PROXY_HOSTS` restricts the targets;
   by default any host is allowed.
 - **Traffic capture.** Request bodies and headers, including any credentials the service under
-  test sends, are kept in memory and returned by `GET /traffic`.
+  test sends, are kept in memory and returned by `GET /__admin/traffic`.
 
 What *is* worth reporting: anything that lets a request escape those documented boundaries — for
 example remote code execution through a configuration payload, a path that reads or writes files

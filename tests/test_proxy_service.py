@@ -69,16 +69,15 @@ class TestUnreachableProxyHost:
         assert response.status_code == PROXY_BAD_GATEWAY
         assert UNREACHABLE_PROXY_HOST in response.json()["error"]
 
-    def test_failed_proxy_response_is_not_cached(self, client: ProxyMock, configure_mock_data):
-        # Unavailability must not be cached: the host may come back up at any moment.
-        configure_mock_data["path"] = "/unreachable-proxy-cached"
+    def test_failed_proxy_response_does_not_affect_mock_replacement(self, client: ProxyMock, configure_mock_data):
+        # A failed upstream request cannot contaminate a subsequently configured static reply.
+        configure_mock_data["path"] = "/unreachable-proxy-replaced"
         configure_mock_data["proxy_host"] = UNREACHABLE_PROXY_HOST
-        configure_mock_data["cache_time"] = 60
         assert client.configure_mock(**configure_mock_data).get("success")
 
         client.execute_request(HTTPMethod.GET, configure_mock_data["path"])
 
-        client.clean_storage(path=configure_mock_data["path"])
+        client.delete_mock(path=configure_mock_data["path"])
         configure_mock_data.pop("proxy_host")
         configure_mock_data["body"] = {"host": "up"}
         assert client.configure_mock(**configure_mock_data).get("success")

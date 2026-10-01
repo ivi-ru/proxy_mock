@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 
+import httpx2
 import pytest
-import requests
 
 from proxy_mock.cli import SnapshotFileError, build_parser, main, read_snapshot
 
@@ -26,9 +26,9 @@ def _wait_until_ready(url: str, process: subprocess.Popen) -> None:
         if process.poll() is not None:
             raise RuntimeError(f"proxy-mock exited with code {process.returncode}")
         try:
-            if requests.get(f"{url}/proxy_mock", timeout=1).status_code == 200:
+            if httpx2.get(f"{url}/__admin", timeout=1).status_code == 200:
                 return
-        except requests.RequestException:
+        except httpx2.RequestError:
             time.sleep(0.1)
     raise RuntimeError("proxy-mock did not become ready in time")
 
@@ -80,12 +80,22 @@ class TestSnapshotFile:
 
 
 class TestServeWithPreloadedMocks:
-    def test_mocks_from_the_file_answer_after_startup(self, tmp_path):
+    @pytest.mark.parametrize("format", [1, 2])
+    def test_mocks_from_the_file_answer_after_startup(self, tmp_path, format):
         snapshot = {
-            "format": 1,
+            "format": format,
             "protocol": "http",
             "mocks": [{"path": "/preloaded", "mock_data": {"body": {"loaded": True}, "status_code": 200}}],
         }
+        if format == 2:
+            from tests.test_snapshot_v2 import recording_entry
+
+            snapshot["mocks"].extend(
+                [
+                    {"path": "/ordered", "sequence": {"responses": [{"body_b64": "/wA="}, {"body": "second"}]}},
+                    {"path": "/recorded", "recording": {"mode": "replay"}, "recordings": [recording_entry()]},
+                ]
+            )
         snapshot_file = tmp_path / "mocks.json"
         snapshot_file.write_text(json.dumps(snapshot), encoding="utf-8")
 
@@ -112,8 +122,37 @@ class TestServeWithPreloadedMocks:
         try:
             _wait_until_ready(url, process)
 
-            assert requests.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
-            assert requests.get(f"{url}/storage", timeout=5).json()["data"]["/preloaded"]
+            assert httpx2.get(f"{url}/preloaded", timeout=5).json() == {"loaded": True}
+            assert httpx2.get(f"{url}/__admin/mocks", timeout=5).json()["data"]["/preloaded"]
+            if format == 2:
+                assert httpx2.get(f"{url}/ordered", timeout=5).content == b"\xff\x00"
+                assert httpx2.get(f"{url}/ordered", timeout=5).text == "second"
+                assert httpx2.get(f"{url}/recorded", timeout=5).content == b"\x00\xffsaved"
+                exported = httpx2.get(f"{url}/__admin/snapshot", timeout=5).json()
+                assert exported["format"] == 2
+                assert len(exported["mocks"][-1]["recordings"]) == 1
         finally:
             process.terminate()
             process.wait(timeout=10)
+
+
+@pytest.mark.parametrize(
+    "mock",
+    [
+        {"path": "/bad", "sequence": {"responses": []}},
+        {"path": "/bad", "recording": {"mode": "replay"}, "recordings": [{"id": "bad"}]},
+    ],
+)
+def test_cli_rejects_invalid_format_two_before_startup(tmp_path, capsys, mock):
+    snapshot_file = tmp_path / "bad.json"
+    snapshot_file.write_text(json.dumps({"format": 2, "mocks": [mock]}), encoding="utf-8")
+    assert main(["--mocks", str(snapshot_file)]) == 2
+    assert "not a valid snapshot" in capsys.readouterr().err
+
+
+def test_missing_server_dependencies_are_reported_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr("proxy_mock._server.find_spec", lambda name: None)
+    assert main([]) == 2
+    message = capsys.readouterr().err
+    assert "pip install 'proxy_mock[server]'" in message
+    assert "Traceback" not in message

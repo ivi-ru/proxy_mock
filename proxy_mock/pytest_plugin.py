@@ -5,8 +5,8 @@ Installing the package is enough — no ``pytest_plugins`` line and no fixture b
     def test_external_service(proxy_mock):
         proxy_mock.configure_mock(path="/external/api", body={"answer": 42})
 
-Everything the server needs is imported inside the fixtures, so a test session that never asks
-for them does not pay for FastAPI and uvicorn.
+Local fixtures require the server extra. With PROXY_MOCK_URL, clients can use an external
+instance with the base install. Server dependencies are imported only for a local instance.
 """
 
 import os
@@ -43,6 +43,10 @@ def proxy_mock_url() -> str:
         yield external.rstrip("/")
         return
 
+    from proxy_mock._server import require_server_dependencies
+
+    require_server_dependencies()
+
     import uvicorn
 
     from proxy_mock.app import create_app
@@ -76,7 +80,7 @@ def proxy_mock(proxy_mock_url: str):
     """
     from proxy_mock.client import ProxyMock
 
-    client = ProxyMock(proxy_mock_url)
+    client = ProxyMock(proxy_mock_url, admin_prefix=os.getenv("PROXY_MOCK_ADMIN_PREFIX"))
     try:
         yield client
     finally:

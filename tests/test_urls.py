@@ -92,7 +92,7 @@ def test_sync_client_encodes_path_filters(client, path):
     assert client.configure_mock(path=path, body="found")["success"]
     assert client.get_storage(path=path)["data"]["mock_data"]["body"] == "found"
     assert client.delete_mock(path)["success"]
-    assert not client.get_storage(path=path)["data"]
+    assert client.get_storage(path=path)["error"]["code"] == "mock_not_found"
 
 
 @pytest.mark.parametrize("path", ["/items/a+b&c=d#tag", "/items/ümlaut", "/items/100%"])
@@ -102,6 +102,6 @@ def test_async_client_encodes_path_filters(path):
             assert (await client.configure_mock(path=path, body="found"))["success"]
             assert (await client.get_storage(path=path))["data"]["mock_data"]["body"] == "found"
             assert (await client.delete_mock(path))["success"]
-            assert not (await client.get_storage(path=path))["data"]
+            assert (await client.get_storage(path=path))["error"]["code"] == "mock_not_found"
 
     asyncio.run(scenario())

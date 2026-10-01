@@ -1,3 +1,117 @@
+Version 3.0.0
+=============
+
+Released on 2026-10-02.
+
+3.0 is the single breaking release announced in 2.13. Breaking changes are listed first; the
+upgrade path for each of them is in [MIGRATING.md](MIGRATING.md). Projects that need the 2.x
+API can pin `proxy_mock>=2.13,<3`.
+
+Breaking changes
+----------------
+
+* **Breaking: administrative REST API.** The configurable administrative namespace defaults
+  to `/__admin` and includes docs and OpenAPI. Legacy service routes and `POST` aliases are
+  removed; their former paths are available to user mocks. The whole namespace is protected
+  from mock shadowing, including unknown administrative paths.
+* Individual mocks use `/__admin/mocks?path=<encoded-path>`. `PUT` creates (`201`) or replaces
+  (`200`); `PATCH` updates an existing mock (`200`) and preserves omitted fields. Explicit null
+  clears nullable fields, nested response properties merge, and arrays replace in full.
+  Missing item reads, patches and deletes return `404`. Administrative errors share
+  `{"success": false, "error": {"code": "...", "message": "...", "details": ...}}`, with
+  optional details. Invalid msgpack fields, including arbitrary binary values and mixed key
+  types, return these structured validation errors without changing existing configuration.
+* Snapshots export format 2 and import formats 1 and 2. `GET /__admin/snapshot` exports;
+  `PUT` replaces and `PATCH` merges complete mocks by path. Traffic uses `GET` and
+  `DELETE /__admin/traffic`; recording settings use `GET` and `PATCH /__admin/settings`.
+  Invalid traffic filters return `422`.
+* The Python clients and pytest fixtures use the administrative API.
+
+* **Breaking: removed response caching.** The cache resource, `cache_time`, `clean_cache()`,
+  response-cache implementation and TTL storage are removed. Client helpers reject the old
+  argument locally; HTTP configuration rejects it with `422`. Static delays apply on every
+  request, and ordinary mock/rule proxying fetches the upstream every time. Saved upstream
+  replies use explicit record/replay.
+* Legacy snapshot imports discard disabled null/zero cache settings and reject enabled or
+  invalid settings atomically with a migration hint. New storage and exports omit the field.
+
+* **Breaking: unified Python transports.** `ProxyMock.execute_request()` now returns
+  `httpx2.Response`, matching `AsyncProxyMock`. Replace `.ok` / response truth testing with
+  explicit status checks, `allow_redirects` with `follow_redirects`, raw `data=` with
+  `content=`, and requests session/adapters with native httpx2 clients. Wrapper-created
+  clients do not follow redirects by default; both use a 10-second per-operation timeout.
+* Both clients wrap every httpx2 `RequestError`, preserving its cause. HTTP response errors
+  expose `.response`; the wrapper's `raise_for_status=True` still checks >=400. All four
+  wrapper error classes are exported from `proxy_mock.client`, with shared base classes.
+* Added `http_client=` injection and `.http_client` access for native transport settings.
+  Context exit closes owned clients, while injected clients remain caller-owned. Request
+  timeouts override the wrapper constructor timeout, including `None` to disable them.
+* Removed requests and its exclusive dependencies from the package and lockfile.
+
+* **Breaking: optional server dependencies.** The base `proxy_mock` install depends only on
+  httpx2 and msgpack. Use `proxy_mock[server]` for local server startup, the app factory and
+  local pytest fixtures; FastAPI, Pydantic and uvicorn retain their existing bounds.
+* Base-only environments support both clients and pytest fixtures using `PROXY_MOCK_URL`.
+  CLI help/version do not import server packages; local startup reports how to install the
+  extra, with exit code 2 and no traceback. Server code still ships in the same wheel.
+
+* **Breaking: removed the deprecated `clean_storage(path=...)` selector** from both clients.
+  Use `delete_mock(path)` for one mock or `clean_storage()` for the entire collection.
+  Old keyword/positional selectors raise `TypeError` before any data is deleted.
+
+New features
+------------
+
+* Added ordered response sequences to mocks and rules. Each entry has its own response body,
+  status and headers. Exhaustion repeats the final response by default; the `error` policy
+  returns `409`. Reservations are atomic and happen before delays.
+* Added `GET` and `PATCH /__admin/sequence-state` and matching sync/async client helpers to
+  inspect and restart a cursor. Unrelated PATCH updates preserve positions; explicit sequence
+  or rule replacement restarts the corresponding cursors. Full mock replacement resets all.
+* Sequence configuration rejects incompatible proxy settings on the mock and on the rule.
+  Format 1 imports containing sequences return `422`; format 2 preserves their definitions
+  and binary responses.
+
+* Added explicit mock-level record/replay. Record mode proxies every request and stores the
+  last completed HTTP reply per exact method/path/query/body key, with optional selected
+  headers. Replay returns the saved reply without upstream access; missing entries return
+  `404`. Transport failures are not recorded, while upstream HTTP errors are.
+* Added `GET` and `DELETE /__admin/recordings` with required mock path and optional entry id,
+  plus both client helpers. Binary bodies, repeated response headers, redirects, decompressed
+  payloads and HEAD representation lengths are supported. An absent HEAD length stays absent
+  on replay, and a compressed HEAD length is omitted together with its content encoding.
+* Recording collections have configurable entry and byte limits. Late responses cannot
+  restore deleted recordings or mutate a replaced mock generation. Snapshot format 1 rejects
+  record/replay explicitly; format 2 preserves completed recordings.
+
+* Added snapshot format 2 with mock/rule sequence definitions and completed recording entries,
+  preserving binary bodies, repeated header pairs, matching keys and eviction order. Export
+  is observational; imported sequence cursors restart at zero. Traffic and pending
+  requests are excluded. Format 1 remains accepted for legacy mock configuration.
+* Snapshot validation checks the whole document, including recording integrity, duplicate ids,
+  header/body consistency and configured storage limits, before mutating state. Invalid data
+  is rejected rather than trimmed. Merge replaces supplied mocks and recordings in full.
+* CLI preload and both clients restore format 2; OpenAPI documents both accepted formats and
+  the format 2 export. Ambiguous config bodies containing both body and body_b64 are rejected.
+
+Fixes and documentation
+-----------------------
+
+* **Fixed:** each application created by `create_app()` owns its mock storage alongside
+  routes, recordings and sequence cursors. In 2.x the mock storage was shared by the process,
+  so an embedded second application saw and could clear the first one's mocks. Recreating an
+  application now starts empty.
+* Rewrote the HTTP reference for the administrative REST API and added a migration guide
+  section for every breaking change. The 2.13 alias behaviour is kept as a separate reference.
+* Added runnable REST lifecycle, binary sequence, offline recording snapshot and async-client
+  examples. The storefront scripts accept local URLs and a custom administrative prefix, so
+  their HTTP behavior is tested without Docker as well as through the Compose CI check.
+* The release workflow no longer publishes a container image to GHCR: the registry package was
+  never publicly readable. Build the image from the repository as described in the README.
+* Development instructions, Docker and server CI checks select the `server` extra explicitly.
+  Added isolated base/server wheel checks, including clients and fixtures against an external
+  server.
+
 Version 2.13.0
 ==============
 

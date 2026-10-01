@@ -1,6 +1,6 @@
 [project]
 name = "proxy_mock"
-version = "2.13.0"
+version = "3.0.0"
 description = "Tool for proxying and mocking HTTP traffic"
 authors = [
     { name = "Andrey Ryabokon", email = "aryabokon@ivi.ru" }
@@ -24,12 +24,15 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
 ]
 dependencies = [
-    "requests>=2.31.0,<3.0.0",
     "httpx2>=2.0.0,<3.0.0",
+    "msgpack>=1.0.4,<2.0.0",
+]
+
+[project.optional-dependencies]
+server = [
     "pydantic>=2.6.0,<3.0.0",
     "fastapi>=0.137.0",
     "uvicorn>=0.27.0",
-    "msgpack>=1.0.4,<2.0.0",
 ]
 
 [project.scripts]

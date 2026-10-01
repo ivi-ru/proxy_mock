@@ -12,23 +12,32 @@ from proxy_mock.services.proxy_service import (
     proxy_request_to_host,
 )
 from proxy_mock.services.response_factory import make_response
+from proxy_mock.services.sequences import ResponseSequence
 
 
-async def apply_rules(app: FastAPI, request: Request, rules: list) -> Response | JSONResponse | None:
+async def apply_rules(
+    app: FastAPI,
+    request: Request,
+    rules: list,
+    *,
+    sequences: dict[int | None, ResponseSequence] | None = None,
+    delay: float = 0,
+) -> Response | JSONResponse | None:
     logger = app.logger
     http_client = app.state.http_client
+    sequences = sequences or {}
 
     request_body = await request.body()
     request_headers = dict(request.headers)
     request_query = dict(request.query_params)
 
     rules_sorted = sorted(
-        rules,
-        key=lambda r: (int(r.get("priority", 0)), float(r.get("timestamp", 0))),
+        enumerate(rules),
+        key=lambda item: (int(item[1].get("priority", 0)), float(item[1].get("timestamp", 0))),
         reverse=True,
     )
 
-    for rule in rules_sorted:
+    for rule_index, rule in rules_sorted:
         rule_conditions = rule["input_data"]
 
         rule_body = rule_conditions.get("body", {})
@@ -56,6 +65,13 @@ async def apply_rules(app: FastAPI, request: Request, rules: list) -> Response |
 
         await app.state.traffic_store.patch_last({"rule_extra_info": convert_bytes_to_str(rule.get("extra_info", {}))})
 
+        # A proxied rule never serves its sequence, so it must not advance the cursor.
+        response_data = rule["output_data"]
+        if rule_index in sequences and not rule_proxy_host:
+            response_data = await sequences[rule_index].take()
+        if delay:
+            await asyncio.sleep(delay)
+
         if rule_proxy_host:
             if not is_proxy_host_allowed(rule_proxy_host):
                 logger.warning(f"Proxying to {rule_proxy_host} is forbidden by the allowlist policy")
@@ -77,8 +93,8 @@ async def apply_rules(app: FastAPI, request: Request, rules: list) -> Response |
         if rule_timeout:
             await asyncio.sleep(rule_timeout)
 
-        logger.debug(f"Returning the rule response: {json.dumps(convert_bytes_to_str(rule['output_data']))}")
-        return make_response(rule["output_data"])
+        logger.debug(f"Returning the rule response: {json.dumps(convert_bytes_to_str(response_data))}")
+        return make_response(response_data)
 
     logger.debug("No rule matched")
     return None

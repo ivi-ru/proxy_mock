@@ -9,8 +9,8 @@ import json
 import sys
 from pathlib import Path
 
+from proxy_mock._server import ServerDependenciesMissing, require_server_dependencies
 from proxy_mock.core.settings import get_version_from_pyproject
-from proxy_mock.services.snapshot import SnapshotError, parse_snapshot
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 5000
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mocks",
         type=Path,
         metavar="FILE",
-        help="snapshot file (as produced by GET /storage/snapshot) to load at startup",
+        help="snapshot file (as produced by GET /__admin/snapshot) to load at startup",
     )
     parser.add_argument(
         "--workers",
@@ -57,6 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def read_snapshot(path: Path) -> dict:
     """Read and validate a snapshot file before the server binds its port."""
+    require_server_dependencies()
+    from proxy_mock.services.snapshot import SnapshotError, parse_snapshot
+
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as err:
@@ -84,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
             "--workers must be 1: mocks and captured traffic live in the memory of a single "
             "process, so additional workers would answer from an empty storage"
         )
+
+    try:
+        require_server_dependencies()
+    except ServerDependenciesMissing as err:
+        print(f"proxy-mock: {err}", file=sys.stderr)
+        return 2
 
     snapshot = None
     if args.mocks:

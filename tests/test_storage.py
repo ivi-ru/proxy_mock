@@ -27,8 +27,8 @@ class TestGetStorage:
     def test_get_storage_by_non_existent_path(self, client: ProxyMock, configure_mock):
         response = client.get_storage(configure_mock["path"] + "/test")
 
-        assert response["success"]
-        assert not response["data"]
+        assert response["success"] is False
+        assert response["error"]["code"] == "mock_not_found"
 
     def test_get_storage_with_binary_body(self, client: ProxyMock, configure_binary_mock):
         response = client.get_storage()
@@ -55,14 +55,14 @@ class TestClearStorage:
         assert not storage["data"]
 
     def test_delete_existing_mock(self, client: ProxyMock, configure_mock):
-        response = client.clean_storage(configure_mock["path"])
+        response = client.delete_mock(configure_mock["path"])
         assert response.get("success")
 
         storage = client.get_storage(configure_mock["path"])
-        assert not storage["data"]
+        assert storage["error"]["code"] == "mock_not_found"
 
     def test_delete_non_existent_mock(self, client: ProxyMock, configure_mock):
-        response = client.clean_storage(configure_mock["path"] + "/test")
+        response = client.delete_mock(configure_mock["path"] + "/test")
         assert not response.get("success")
 
         storage = client.get_storage(configure_mock["path"])
@@ -79,7 +79,7 @@ class TestDeleteMock:
         response = client.delete_mock("/remove-me")
         assert response["success"]
 
-        assert not client.get_storage("/remove-me")["data"]
+        assert client.get_storage("/remove-me")["error"]["code"] == "mock_not_found"
         assert client.get_storage("/keep-me")["data"]
 
     def test_deleted_mock_route_returns_404(self, client: ProxyMock, configure_mock_data):
@@ -91,7 +91,7 @@ class TestDeleteMock:
         assert client.execute_request(HTTPMethod.GET, "/gone-soon").status_code == 404
 
     def test_delete_non_existent_returns_404(self, client: ProxyMock):
-        response = client.execute_request(HTTPMethod.DELETE, "/storage?path=/never-existed")
+        response = client.execute_request(HTTPMethod.DELETE, "/__admin/mocks?path=/never-existed")
         assert response.status_code == 404
         assert not response.json()["success"]
 
@@ -101,7 +101,7 @@ class TestDeleteMock:
         configure_mock_data["path"] = "/wipe-b"
         client.configure_mock(**configure_mock_data)
 
-        response = client.execute_request(HTTPMethod.DELETE, "/storage")
+        response = client.execute_request(HTTPMethod.DELETE, "/__admin/mocks")
         assert response.status_code == 200
 
         assert not client.get_storage()["data"]
@@ -116,5 +116,5 @@ class TestClearAllRemovesRoutes:
         client.configure_mock(**configure_mock_data)
         assert client.execute_request(HTTPMethod.GET, "/no-zombie").status_code == 201
 
-        client.clean_storage()  # POST /storage/clean without path
+        client.clean_storage()  # DELETE the entire mock collection
         assert client.execute_request(HTTPMethod.GET, "/no-zombie").status_code == 404

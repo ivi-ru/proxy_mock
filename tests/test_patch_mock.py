@@ -31,10 +31,14 @@ class TestPatchConfigure:
         patch_response = client.patch_mock(**configure_mock_data)
 
         assert configure_response["data"]["mock_data"]["body"] == patch_response["data"]["mock_data"]["body"]
-        assert len(patch_response["data"]["rules"]) == 2
+        assert len(patch_response["data"]["rules"]) == 1
+        assert (
+            patch_response["data"]["rules"][0]["input_data"]["body"]
+            == TEST_RULES_DATA[1]["input_data"]["body"].decode()
+        )
 
     def test_fail(self, client: ProxyMock, configure_mock_data):
         patch_response = client.patch_mock(**configure_mock_data)
 
         assert not patch_response["success"]
-        assert patch_response["error"] == f"There is no mock for {configure_mock_data['path']}"
+        assert patch_response["error"]["code"] == "mock_not_found"

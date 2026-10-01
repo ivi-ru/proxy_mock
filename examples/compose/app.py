@@ -27,4 +27,6 @@ class Storefront(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8000), Storefront).serve_forever()
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", "8000"))
+    ThreadingHTTPServer((host, port), Storefront).serve_forever()

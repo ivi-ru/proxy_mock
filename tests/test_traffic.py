@@ -30,7 +30,7 @@ class TestTraffic:
             assert req_param["request_path"] == configure_mock["path"]
 
     def test_send_binary_request(self, client: ProxyMock, configure_binary_mock):
-        client.execute_request(HTTPMethod.POST, configure_binary_mock["path"], data=BYTE_RESPONSE)
+        client.execute_request(HTTPMethod.POST, configure_binary_mock["path"], content=BYTE_RESPONSE)
 
         response = client.get_traffic()
 
@@ -120,7 +120,7 @@ class TestRecordUnknownTrafficSetting:
 
     def test_invalid_payload_returns_422(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.POST, "/traffic/settings", json={"record_unknown_traffic": "not-a-bool"}
+            HTTPMethod.PATCH, "/__admin/settings", json={"record_unknown_traffic": "not-a-bool"}
         )
 
         assert response.status_code == 422
@@ -128,9 +128,9 @@ class TestRecordUnknownTrafficSetting:
 
     def test_broken_json_returns_400(self, client: ProxyMock):
         response = client.execute_request(
-            HTTPMethod.POST,
-            "/traffic/settings",
-            data=b"{not json",
+            HTTPMethod.PATCH,
+            "/__admin/settings",
+            content=b"{not json",
             headers={"Content-Type": "application/json"},
         )
 
@@ -138,7 +138,7 @@ class TestRecordUnknownTrafficSetting:
         assert not response.json()["success"]
 
     def test_empty_payload_returns_422(self, client: ProxyMock):
-        response = client.execute_request(HTTPMethod.POST, "/traffic/settings", json={})
+        response = client.execute_request(HTTPMethod.PATCH, "/__admin/settings", json={})
 
         assert response.status_code == 422
         assert not response.json()["success"]
@@ -176,7 +176,7 @@ class TestTrafficMaxItemsSetting:
 
     @pytest.mark.parametrize("value", [0, -1, "many"])
     def test_invalid_max_items_returns_422(self, client: ProxyMock, value):
-        response = client.execute_request(HTTPMethod.POST, "/traffic/settings", json={"max_items": value})
+        response = client.execute_request(HTTPMethod.PATCH, "/__admin/settings", json={"max_items": value})
 
         assert response.status_code == 422
         assert not response.json()["success"]

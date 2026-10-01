@@ -11,7 +11,7 @@ non-goals are in [ROADMAP.md](ROADMAP.md).
 The project uses [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync            # or: make install
+uv sync --extra server  # or: make install
 make test          # pytest --cov -v
 make lint          # ruff check + ruff format --check
 make lint_fix      # ruff check --fix + ruff format
@@ -21,7 +21,7 @@ make run           # start the service on http://localhost:5000
 Optionally, install the hooks so formatting never reaches CI:
 
 ```bash
-uv run pre-commit install
+uv run --extra server pre-commit install
 ```
 
 Python 3.11 or newer is required. CI runs the test suite on 3.11, 3.12, 3.13 and 3.14.
