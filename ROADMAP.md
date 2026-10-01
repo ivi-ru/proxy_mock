@@ -43,8 +43,8 @@ environment inherit every dependency and every version constraint we take on.
 
 Historical footprint, measured on Python 3.12 for 2.12.0: `pip install proxy_mock` resolves to **22
 distributions** — the package plus 21 dependencies, down from 26 distributions in 2.11.0.
-The install split and synchronous client migration are implemented in this 3.0 checkout.
-A clean installation of the local 3.0.0 wheel on macOS/Python 3.13, measured on 2026-09-30,
+3.0 split the install and moved the synchronous client to `httpx2`. A clean installation of
+the 3.0.0 wheel on macOS/Python 3.13, measured on 2026-09-30,
 resolved **9 distributions** for the base package and **19** with the server extra, including
 proxy-mock and excluding test/development tools. These use newly resolved dependencies; counts
 can change as transitive releases evolve.
@@ -93,8 +93,6 @@ Additive: nothing here changes existing behaviour.
   The snapshot format is a public contract from day one: a `"format": 1` envelope, binary bodies
   carried as `body_b64`, and a `protocol` field reserved so that non-HTTP mocks would not force
   a format 2. The endpoints move under the service prefix in 3.0.
-- **Container image on GHCR**, published by the release workflow, so that using proxy-mock in
-  someone else's CI does not require building the image first.
 - **CI.** A job that resolves the declared lower bounds instead of only the locked versions; a
   smoke test that installs the built wheel into a clean virtualenv and runs the pytest fixture
   against it; a check that the container image actually starts and answers.
@@ -142,7 +140,7 @@ The final planned feature release before 3.0 kept 2.x behaviour and prepared con
 
 ---
 
-## 3.0 — one breaking release
+## 3.0 — one breaking release (released)
 
 ### RESTful administrative API behind a prefix
 
@@ -154,8 +152,7 @@ error responses. This includes mock configuration and storage, traffic, settings
 and service information. The same contract applies to the new 3.0 features. Moving the old
 action-style endpoints behind a prefix alone does not satisfy this requirement.
 
-The administrative API and the other 3.0 changes are implemented locally. Package version
-metadata is `3.0.0`; publication remains a separate maintainer action.
+Released in 3.0.0 on 2026-10-02, together with the other changes below.
 The namespace also contains Swagger UI, ReDoc and OpenAPI. Former service paths become ordinary
 mock paths. The FastAPI lower bound remains unchanged until a separate compatibility check
 justifies changing it.
@@ -180,14 +177,12 @@ resource-specific patch format, not JSON Merge Patch. Administrative errors use 
 See [README.md](README.md#administrative-rest-resources) for the current contract and
 [MIGRATING.md](MIGRATING.md) for differences from the released 2.13 aliases.
 
-Documentation and runnable integration examples now describe the implemented 3.0 contract.
-The version bump and local release validation are complete; publication has not been performed.
 Future endpoints must follow the same resource and HTTP-method conventions.
 
 ### Response caching removed
 
-Implemented locally: `cache_time`, `clean_cache()`, the cache resource, response-cache code and
-TTL storage are deleted. Caching a mock response is
+`cache_time`, `clean_cache()`, the cache resource, response-cache code and TTL storage are
+deleted. Caching a mock response is
 close to a no-op by construction — the mock is already static and cheap — and the one case where
 it does something, a proxied response, is better served by record & replay, which is explicit
 about what was recorded and lets you look at it.
@@ -195,11 +190,11 @@ about what was recorded and lets you look at it.
 The clients reject the removed argument before network access; HTTP mock configuration
 rejects it with `422`. Legacy snapshots may contain disabled null/zero cache settings, which
 are discarded on import. Enabled settings are rejected before mutation so proxying cannot
-silently change into repeated upstream access. See [the migration guide](MIGRATING.md#removed-response-caching-in-this-checkout).
+silently change into repeated upstream access. See [the migration guide](MIGRATING.md#removed-response-caching).
 
 ### Record & replay
 
-Implemented locally: mock-level `recording` configuration explicitly selects `record` or
+Mock-level `recording` configuration explicitly selects `record` or
 `replay`. Recorded replies are inspectable and removable through the REST recording resource.
 Exact matching uses method, raw path/query and body bytes, with optional selected headers.
 Replay never contacts the upstream; missing keys return `404`. Collections are bounded by
@@ -214,7 +209,7 @@ explicitly. See the
 
 ### Response sequences
 
-Implemented locally: a mock or rule can serve an ordered response list. The default exhaustion
+A mock or rule can serve an ordered response list. The default exhaustion
 policy is `repeat_last`; `error` returns `409`. Cursors are reserved atomically before delays,
 inspected with `GET /__admin/sequence-state`, and restarted with `PATCH {"position": 0}`.
 Mock replacement restarts cursors; unrelated partial updates preserve them. Matching and rule
@@ -226,15 +221,15 @@ at zero; export leaves positions unchanged. Format 1 remains readable for ordina
 
 ### Synchronous client transport
 
-Implemented locally: both clients use `httpx2`, removing `requests` and the dependencies
-used only by it. The [migration guide](MIGRATING.md#python-client-transport-in-this-checkout)
+Both clients use `httpx2`, removing `requests` and the dependencies
+used only by it. The [migration guide](MIGRATING.md#python-client-transport)
 covers native responses, shared exception classes, body encoding, redirect defaults, timeouts
 and native-client injection with explicit ownership. Existing `requests.Response` behaviour
-remains available in published 2.x.
+remains available in 2.x.
 
 ### Install split
 
-Implemented locally: the base install depends on `httpx2` and `msgpack`, while
+The base install depends on `httpx2` and `msgpack`, while
 `proxy_mock[server]` adds FastAPI, Pydantic and uvicorn with unchanged bounds. The same wheel
 ships both clients and server code. External pytest fixtures and CLI help/version work with
 the base install; local startup gives an installation hint when dependencies are missing.
@@ -243,15 +238,15 @@ instance no longer inherits the server dependencies and their constraints.
 
 ### Entry point
 
-Implemented locally: the documented entry points are the `proxy-mock` console script and
+The documented entry points are the `proxy-mock` console script and
 `proxy_mock.app:create_app` for embedding, both using the server extra.
 `proxy_mock.any_catcher:app` appears only as a historical migration reference.
 The [runnable examples](examples/README.md) cover REST configuration, response sequences,
 offline snapshot replay, both clients, and a storefront with a separate HTTP dependency.
 
-### Local release validation
+### Release validation
 
-Completed on macOS on 2026-09-30 for the unreleased 3.0.0 package:
+Completed on macOS on 2026-09-30 for the 3.0.0 package:
 
 | Check | Result |
 |-------|--------|
@@ -268,9 +263,8 @@ suite to 668 tests. All passed on macOS with locked and lowest compatible depend
 coverage remained 98%. The rebuilt wheel also passed the 28 isolated installation and example
 checks above.
 
-The temporary Compose containers and network were removed. Local validation created no Git
-tags, published packages or releases. Publishing remains the maintainer procedure in
-CONTRIBUTING.md.
+Review fixes before the release brought the suite to 670 tests. CI passed them on Python
+3.11–3.14 with locked dependencies and on Python 3.11 with the lowest compatible ones.
 
 ---
 

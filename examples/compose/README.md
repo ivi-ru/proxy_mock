@@ -1,7 +1,3 @@
-> This checkout uses the unreleased administrative REST API. Build the image from this checkout;
-> published 2.x images do not implement this contract. The Compose file builds `proxy-mock:local`
-> by default.
-
 # Mock an HTTP dependency between containers
 
 This example runs a tiny storefront in one container and proxy-mock in
@@ -28,10 +24,8 @@ PASS: storefront response and captured inventory request
 
 The check exits nonzero if either assertion fails. Run the cleanup command even after a failed
 check. No persistent volumes, credentials, external APIs, or host Python packages are required.
-Docker downloads the base images and builds proxy-mock from this checkout on the first run.
-
-Building this checkout does not need GHCR credentials. Published images use the released
-2.x API and cannot run this example.
+Docker downloads the base images and builds proxy-mock from the repository on the first run.
+The Compose file uses `proxy-mock:local` unless `PROXY_MOCK_IMAGE` names another image.
 
 ## Addresses inside and outside Docker
 
@@ -49,13 +43,13 @@ After the check, you can inspect the configured response and recorded requests i
 `http://127.0.0.1:15000/__admin/docs` before running cleanup. The check resets this dedicated instance's
 mocks and traffic each time it runs, so it is safe to repeat.
 
-## Use an image built from this checkout
+## Use another image
 
-Set `PROXY_MOCK_IMAGE` to the tag of an image built from this source tree. Published 2.x images
-use the old administrative API and cannot run this checkout's check script.
+Set `PROXY_MOCK_IMAGE` to the tag of an image built from a 3.x source tree. Images of 2.x use
+the old administrative API and cannot run the check script.
 
-CI overrides `PROXY_MOCK_IMAGE` with the image built from the current checkout and runs the same
-start, check, and cleanup commands.
+CI overrides `PROXY_MOCK_IMAGE` with the image built from the commit under test and runs the
+same start, check, and cleanup commands.
 
 ## Check the scripts on the host
 

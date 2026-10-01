@@ -1,16 +1,17 @@
 # Migrating from 2.x to 3.0
 
-**3.0 is in development, not released.** This checkout implements its administrative REST API,
-response sequences and record/replay. Package version metadata is `3.0.0`; it has not been
-published. Published 2.13 keeps the old routes, status codes, response bodies and client transports.
+3.0 is a breaking release. It replaces the administrative endpoints with a resource-oriented
+REST API, adds response sequences and record/replay, removes response caching and moves both
+Python clients to `httpx2`. 2.13 keeps the old routes, status codes, response bodies and client
+transports; see [the 2.13 reference](#released-213-compatibility-reference) to stay on 2.x for now.
 
 Both clients now use `httpx2`. The base install contains clients; the optional `server` extra
 provides dependencies for a local server as described below.
 
 ## Upgrade checklist
 
-1. Upgrade clients and server together from this checkout; published 2.x is not HTTP-compatible
-   with the new server, even when both use `/__admin`.
+1. Upgrade clients and server together; a 2.x client is not HTTP-compatible with a 3.0 server,
+   even when both use `/__admin`.
 2. Install the base package for an external server, or the `server` extra for local startup.
    Match the administrative prefix in both environments.
 3. Move handwritten HTTP calls to the resource table below. Review replacement versus partial
@@ -22,9 +23,9 @@ provides dependencies for a local server as described below.
 6. Keep a copy of existing format 1 snapshots. Import is supported, but new format 2 exports
    cannot be loaded by a 2.x server. Sequence cursors restart on import.
 7. Run the [3.0 examples](examples/README.md) against a dedicated instance; pytest fixture
-   cleanup clears its mocks and traffic. Complete the final release checks before publishing.
+   cleanup clears its mocks and traffic.
 
-## Administrative REST API in this checkout
+## Administrative REST API
 
 The server and both Python clients now default to `/__admin`. Set `PROXY_MOCK_ADMIN_PREFIX` on
 the server and pass the same `admin_prefix` to clients to change it. The pytest fixtures read
@@ -37,8 +38,8 @@ shadow it. Legacy service paths are removed and become ordinary mock paths: `/st
 `/traffic`, `/configure_mock`, `/docs`, `/redoc` and `/openapi.json` no longer provide service
 operations. A prefix provides routing isolation, not authentication.
 
-| Operation in 2.x | Resource and method in this checkout |
-|-----------------|-------------------------------------|
+| Operation in 2.x | Resource and method in 3.0 |
+|-----------------|----------------------------|
 | `GET /proxy_mock` | `GET /__admin` |
 | `POST /configure_mock` | `PUT /__admin/mocks?path=<encoded-path>` |
 | `PATCH /configure_mock` | `PATCH /__admin/mocks?path=<encoded-path>` |
@@ -67,7 +68,7 @@ The mock path moves to the required query parameter on `PUT` and `PATCH`. A body
 optional and, when supplied, must match. `GET` and `DELETE` without a query address the whole
 collection; `?path=` is invalid and never means all mocks.
 
-Before, in released 2.x:
+Before, in 2.x:
 
 ```sh
 curl -X POST http://localhost:5000/configure_mock \
@@ -75,7 +76,7 @@ curl -X POST http://localhost:5000/configure_mock \
   -d '{"path":"/inventory","mock_data":{"body":{"available":3}}}'
 ```
 
-After, in this checkout:
+After, in 3.0:
 
 ```sh
 curl -X PUT 'http://localhost:5000/__admin/mocks?path=%2Finventory' \
@@ -136,11 +137,11 @@ curl -X PUT http://localhost:5000/__admin/snapshot \
 
 ### Python clients
 
-Use the clients from the same checkout as the server. The public convenience methods select
+Use 3.0 clients with a 3.0 server. The public convenience methods select
 the new resource methods; `configure_mock()` uses PUT and `patch_mock()` uses PATCH.
 `import_mocks(..., mode="replace")` uses PUT and `mode="merge"` uses PATCH. Generic
 `execute_request()` calls still use the exact route you provide, so migrate any handwritten
-administrative requests. Published 2.13 clients use a different HTTP contract even when their
+administrative requests. 2.13 clients use a different HTTP contract even when their
 opt-in prefix is `/__admin`.
 
 Both clients return `httpx2.Response`; migrate request arguments and response handling
@@ -148,7 +149,7 @@ as described below. Response caching is removed; local startup requires the `ser
 `clean_storage()` deletes the whole collection. The deprecated `path` argument is removed
 and raises `TypeError`, including explicit null; use `delete_mock(path)` for one mock.
 
-## Record/replay in this checkout
+## Record/replay
 
 Record/replay is explicit: configure `recording: {"mode": "record"}` with a mock-level
 `proxy_host`, then switch with `PATCH` to `recording: {"mode": "replay"}`. This preserves
@@ -168,9 +169,9 @@ concurrent requests, binary bodies and repeated headers.
 Snapshot format 2 preserves recording configuration and completed replies, including binary
 bodies, repeated header pairs and eviction order. Invalid keys or collections exceeding their
 configured limits return `422` before mutation. Format 1 has no recording representation and
-rejects this data. Published 2.13 has no record/replay API.
+rejects this data. 2.13 has no record/replay API.
 
-## Response sequences in this checkout
+## Response sequences
 
 Mocks and rules accept `sequence: {"responses": [...], "on_exhaustion": "repeat_last"}`.
 The default repeats the final response; `on_exhaustion: "error"` returns `409` when all entries
@@ -185,18 +186,18 @@ reset, reconfiguration or deletion.
 
 Format 2 exports sequence definitions and binary responses; imported cursors start at zero.
 Export does not change positions. Format 1 imports with sequences return `422` atomically.
-Ordinary format 1 snapshots remain supported. Published 2.x cannot read format 2; do not
+Ordinary format 1 snapshots remain supported. A 2.x server cannot read format 2; do not
 relabel its envelope as format 1. Traffic and in-flight requests are excluded.
 Snapshot merge replaces supplied mocks and recordings completely while preserving omitted
 mocks. Missing recording arrays mean empty collections. The CLI restores format 2 at startup.
 See the [snapshot contract](README.md#snapshots-of-the-storage).
 
-## Python client transport in this checkout
+## Python client transport
 
 Both `ProxyMock` and `AsyncProxyMock` now use `httpx2` and return its buffered `Response`
 from `execute_request()`. `requests`, `charset-normalizer` and `urllib3` are no longer
 installed by proxy-mock. Early supported httpx2 versions can still depend on `certifi`;
-it is absent from the current lockfile. Published 2.13 retains `requests.Session` and
+it is absent from the current lockfile. 2.13 retains `requests.Session` and
 `requests.Response` for the synchronous client.
 
 ### Response handling and request arguments
@@ -205,7 +206,7 @@ Replace `.ok` and response truth testing with an explicit status check. `httpx2.
 is always truthy, including HTTP errors; `.is_success` is true only for 200–299. If your
 old `.ok` check accepted redirects, use `response.status_code < 400` instead.
 
-Before (published 2.x sync client):
+Before (2.x sync client):
 
 ```python
 with ProxyMock(url) as client:
@@ -214,7 +215,7 @@ with ProxyMock(url) as client:
     cookies = response.raw.headers.getlist("Set-Cookie")
 ```
 
-After (this checkout, sync client):
+After (3.0 sync client):
 
 ```python
 with ProxyMock(url) as client:
@@ -284,26 +285,22 @@ unless overridden per request. A wrapper-created native client is closed by `clo
 `aclose()` or context exit, including exceptional exit. An injected client is borrowed:
 the caller closes it. Passing the wrong native client type raises `TypeError`.
 
-## Installation and startup in this checkout
+## Installation and startup
 
 The base install, `proxy_mock`, depends only on `httpx2` and `msgpack`. Server source files
 still ship in the same wheel, but FastAPI, Pydantic and uvicorn move to `proxy_mock[server]`.
 Their version bounds are unchanged. Use the extra to run the server, embed `create_app()`,
 validate snapshots with the CLI or start a local instance through pytest fixtures.
 
-**3.0 is not released.** To try these contracts from the checkout:
-
 ```sh
-python -m pip install .                 # clients talking to an existing server
-python -m pip install '.[server]'       # local server
-uv sync --locked --extra server         # development and tests
+python -m pip install proxy_mock              # clients talking to an existing server
+python -m pip install 'proxy_mock[server]'    # local server
 ```
 
-After 3.0 is released, replace the local paths with `proxy_mock` or `proxy_mock[server]`.
-Published 2.13 has no server extra and continues to install server dependencies by default.
-For the 3.0 CLI in an isolated environment, use
-`uvx --from 'proxy_mock[server]' proxy-mock` or
-`pipx run --spec 'proxy_mock[server]' proxy-mock`.
+2.13 has no server extra and installs server dependencies by default. For the CLI in an
+isolated environment, use `uvx --from 'proxy_mock[server]' proxy-mock` or
+`pipx run --spec 'proxy_mock[server]' proxy-mock`. Development and tests of proxy-mock itself
+use `uv sync --locked --extra server`.
 
 A base-only environment supports both clients, snapshot export/import against a running
 server, pytest auto-loading and fixtures using `PROXY_MOCK_URL`. It does not need server
@@ -321,7 +318,7 @@ Switch existing uvicorn entry points from `proxy_mock.any_catcher:app` to the su
 `uvicorn proxy_mock.app:create_app --factory`, or use the `proxy-mock` console command already
 available in 2.x. Only one worker is supported because storage is in process memory.
 
-## Removed response caching in this checkout
+## Removed response caching
 
 `cache_time`, `clean_cache()` and both the legacy and administrative cache resources are
 removed. Passing the field to either client's configure/patch helper raises `TypeError`
@@ -337,14 +334,13 @@ For migration, snapshot imports accept and discard disabled legacy cache values 
 integer zero). Enabled or invalid cache values return `422` without changing configuration,
 recordings or cursors. Remove the field from those files or migrate the scenario explicitly;
 import never contacts an upstream to populate recordings. New exports omit the field.
-Published 2.13 retains its caching API and transport behavior.
+2.13 retains its caching API and transport behavior.
 
-Record/replay, ordered sequences and snapshot format 2 are implemented in this checkout.
 gRPC and an authentication token are outside the 3.0 scope.
 
 ## Released 2.13 compatibility reference
 
-The following sections describe published 2.13 only. They do not describe this checkout.
+The following sections describe 2.13 only, for projects that stay on 2.x for now.
 
 ### Stay on 2.x until you are ready
 

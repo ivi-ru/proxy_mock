@@ -1,8 +1,7 @@
 # Runnable examples
 
-These examples target the unreleased 3.0 checkout. Published 2.x servers and clients have a
-different administrative HTTP API. Package metadata is 3.0.0; this version is prepared locally
-and has not been published. No external API or credentials are needed.
+These examples target proxy-mock 3.0. 2.x servers and clients have a different administrative
+HTTP API. No external API or credentials are needed.
 
 ## Run from this repository
 
@@ -32,18 +31,17 @@ In an application's own test, configure its HTTP dependency URL to use `proxy_mo
 before calling the application. The inventory examples call that URL directly so they can
 run on their own.
 
-## Run against a package installed from this checkout
+## Run against an installed package
 
-Install into a virtual environment from the repository root, then copy the `examples`
-directory to another directory before running pytest there:
+Install into a virtual environment, then copy the `examples` directory to another directory
+before running pytest there:
 
 ```bash
-python -m pip install '.[server]' pytest
+python -m pip install 'proxy_mock[server]' pytest
 ```
 
 CI builds the wheel and copies these examples outside the repository. This verifies that the
-installed package and registered fixtures work without importing the source checkout.
-After 3.0 is released, use `proxy_mock[server]` in place of `.[server]`.
+installed package and registered fixtures work without importing the source tree.
 
 ## Use a running instance or a custom prefix
 
@@ -68,11 +66,11 @@ To check the default local fixture with a custom prefix:
 PROXY_MOCK_ADMIN_PREFIX=/test/admin uv run --extra server pytest -q examples
 ```
 
-## Published 2.x compatibility
+## 2.x compatibility
 
-Only [test_http_dependency.py](test_http_dependency.py) also works with published 2.x. Copy
-that file into a test directory and install `proxy_mock>=2.13,<3` plus pytest to stay on the
-compatible release. The new sequence/recording examples require this 3.0 checkout.
+Only [test_http_dependency.py](test_http_dependency.py) also works with 2.x. Copy that file
+into a test directory and install `proxy_mock>=2.13,<3` plus pytest to stay on 2.x. The
+sequence and recording examples require 3.0.
 
 ## Run an application and its mock in separate containers
 

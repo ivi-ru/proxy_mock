@@ -10,20 +10,18 @@ It suits automated tests, integration scenarios and local debugging of service-t
 
 [Migration to 3.0](MIGRATING.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-> **3.0 development, not a release:** this checkout implements the administrative REST API,
-> response sequences, record/replay, unified Python clients using `httpx2`, and the `server` extra.
-> Its package version is `3.0.0`; publication is still a separate maintainer action. The HTTP
-> reference below describes this checkout; published 2.13 retains the legacy API and opt-in aliases.
-> Pin `proxy_mock>=2.13,<3` for the published compatible release. See
-> [Migrating from 2.x to 3.0](MIGRATING.md) for the HTTP changes and work still planned.
+> **3.0 is a breaking release:** the administrative API moved to REST resources under `/__admin`,
+> response caching gave way to explicit record/replay, both Python clients use `httpx2`, and a
+> local server needs the `server` extra. Upgrading from 2.x? Follow
+> [Migrating from 2.x to 3.0](MIGRATING.md), or pin `proxy_mock>=2.13,<3` to keep the 2.x API.
 
 ## Quick start
 
-With Python 3.11 or newer, install this development checkout and pytest in a virtual
-environment from the repository root:
+With Python 3.11 or newer, install proxy-mock with the `server` extra and pytest in a virtual
+environment:
 
 ```bash
-python -m pip install '.[server]' pytest
+python -m pip install 'proxy_mock[server]' pytest
 ```
 
 Save this complete test as `test_http_dependency.py`:
@@ -66,8 +64,8 @@ To use the tool outside pytest, start the standalone server with `proxy-mock --p
 - **Request proxying** to an upstream host (`proxy_host`)
 - **Endpoint mocking** with flexible response configuration
 - **Rules** for returning different responses on the same path
-- **Record/replay** with inspectable upstream replies and exact request matching (unreleased 3.0)
-- **Response sequences** for ordered replies on a mock or a matching rule (unreleased 3.0)
+- **Record/replay** with inspectable upstream replies and exact request matching (new in 3.0)
+- **Response sequences** for ordered replies on a mock or a matching rule (new in 3.0)
 - **Response delay** (`timeout`)
 - **Traffic capture** of incoming requests for later inspection
 - **Bounded in-memory traffic storage** (the last 1000 records by default)
@@ -91,8 +89,8 @@ The tool is meant for a **trusted, isolated test environment** and is not design
 
 ## ⬆️ Historical migration from 1.0.1 to 2.x
 
-This section describes the released 2.x API. For this checkout, also apply
-[the 3.0 HTTP migration](MIGRATING.md#administrative-rest-api-in-this-checkout).
+This section describes the 2.x API. When upgrading to 3.0, also apply
+[the 3.0 migration](MIGRATING.md).
 
 The previously published 1.0.1 ran on Flask. The 2.x line runs on FastAPI, and four
 changes break compatibility. What to fix in a project upgrading from 1.0.1:
@@ -119,10 +117,9 @@ gunicorn. The full history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## 🚀 Getting started
 
-The 3.0 server requires the `server` extra. When installing this checkout use
-`pip install '.[server]'`; package-index commands below apply when 3.0 is released.
-Published 2.x includes the server by default. The shortest path after release is one command,
-with nothing installed permanently:
+The server requires the `server` extra; the base `proxy_mock` install contains only the
+clients and the pytest plugin. The shortest path is one command, with nothing installed
+permanently:
 
 ```bash
 uvx --from 'proxy_mock[server]' proxy-mock --port 5000
@@ -170,15 +167,7 @@ Make sure the following are installed:
 The [Docker Compose example](examples/compose/README.md) includes a complete local build and
 an application calling its mock from another container.
 
-Published releases have images on GHCR. Access may require registry credentials.
-The `latest` image follows published releases and does not contain this unreleased 3.0 API.
-For a released server, no local build is needed:
-
-```bash
-docker run --rm -p 5000:5000 ghcr.io/ivi-ru/proxy_mock:latest
-```
-
-To build this checkout without GHCR access:
+Build the image from the repository and run it:
 
 ```bash
 docker build -t proxy-mock:local .
@@ -193,14 +182,13 @@ docker run --rm -p 127.0.0.1:5000:5000 -v "$PWD/mocks.json:/mocks.json" \
     python -m proxy_mock --host=0.0.0.0 --port=5000 --mocks /mocks.json
 ```
 
-A snapshot must match the server: published 2.x reads format 1; this checkout reads formats
-1 and 2. A format 2 snapshot needs the locally built image while 3.0 remains unreleased.
+A snapshot must match the server: 2.x reads format 1; 3.0 reads formats 1 and 2.
 
 Once it is up, the service listens on `http://localhost:5000`.
 
 ### 🐍 Running without Docker (as a pip package)
 
-Docker is not required for automated tests. The 3.0 base install contains both clients and a
+Docker is not required for automated tests. The base install contains both clients and a
 pytest plugin for external instances; the `server` extra supplies local server dependencies.
 The wheel includes the server code in both cases.
 
@@ -246,11 +234,10 @@ using the `proxy_mock` fixture, which resets state between tests.
 
 #### Snapshots of the storage
 
-The whole storage can be exported as one JSON document, kept next to the tests, and loaded back.
-The HTTP example below targets this development checkout:
+The whole storage can be exported as one JSON document, kept next to the tests, and loaded back:
 
 ```bash
-curl http://localhost:5000/__admin/snapshot > mocks.json  # export from this checkout
+curl http://localhost:5000/__admin/snapshot > mocks.json  # export the current mocks
 proxy-mock --port 5000 --mocks mocks.json                 # start with them preloaded
 ```
 
@@ -304,12 +291,12 @@ Replaced mocks detach pending recordings so late responses cannot modify importe
 The CLI validates the file before starting and restores the same data at startup.
 
 Format 1 remains readable for static/proxy mocks and rules. Sequences and recordings require
-format 2, and a format 1 document containing them is rejected. Published 2.x cannot read
+format 2, and a format 1 document containing them is rejected. A 2.x server cannot read
 format 2: do not relabel an exported format 2 document as format 1.
 
 ### Python client transport
 
-In this 3.0 checkout, both `ProxyMock` and `AsyncProxyMock` return `httpx2.Response` from
+Since 3.0, both `ProxyMock` and `AsyncProxyMock` return `httpx2.Response` from
 `execute_request()`. Check `.is_success` or explicit status codes; responses are always
 truthy. Use `content=` for raw bodies, `data=` for form mappings, and `follow_redirects=`
 for redirect handling. Wrapper-created clients do not follow redirects by default and use
@@ -319,8 +306,8 @@ Pass `http_client=httpx2.Client(...)` or `httpx2.AsyncClient(...)` for custom he
 cookies, TLS, proxies or transports. The wrapper closes native clients it creates and leaves
 injected clients open. `.http_client` exposes the native client. For exception handling,
 per-request options and executable migration examples, see the
-[transport contract](MIGRATING.md#python-client-transport-in-this-checkout).
-Published 2.x keeps the previous synchronous response type and redirect behavior.
+[transport contract](MIGRATING.md#python-client-transport).
+The 2.x synchronous client used a different response type and redirect behavior.
 
 **Requirements and limitations:**
 
@@ -335,7 +322,7 @@ Published 2.x keeps the previous synchronous response type and redirect behavior
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `PROXY_MOCK_ADMIN_PREFIX` | absolute path, default `/__admin` | Administrative namespace, including docs and OpenAPI. Legacy routes are removed in this checkout. The prefix cannot be empty. See [migration guide](MIGRATING.md) |
+| `PROXY_MOCK_ADMIN_PREFIX` | absolute path, default `/__admin` | Administrative namespace, including docs and OpenAPI. Legacy 2.x routes are removed in 3.0. The prefix cannot be empty. See [migration guide](MIGRATING.md) |
 | `PROXY_MOCK_LOG_REQUESTS` | `full` (default), `minimal`, `off` | Logging level for incoming requests |
 | `PROXY_MOCK_TRAFFIC_MAX` | integer > 0 (default `1000`) | Maximum number of records in the in-memory traffic store. Changeable at runtime via `PATCH /__admin/settings` |
 | `PROXY_MOCK_PROXY_TIMEOUT` | float, seconds (default `30`) | Timeout for outgoing proxied requests |
@@ -357,8 +344,7 @@ A short reference and the key examples follow.
 
 ## Administrative REST resources
 
-These routes describe the unreleased checkout. Replace `/__admin` with
-`PROXY_MOCK_ADMIN_PREFIX` when configured. The entire namespace is reserved: user mocks cannot
+Replace `/__admin` with `PROXY_MOCK_ADMIN_PREFIX` when configured. The entire namespace is reserved: user mocks cannot
 shadow administrative routes, documentation, or unknown paths inside it. Former service paths
 such as `/storage`, `/configure_mock` and `/docs` can now be used by ordinary mocks.
 
@@ -437,7 +423,7 @@ curl -X PATCH 'http://localhost:5000/__admin/mocks?path=%2Finventory' \
 ```
 
 The second request keeps the existing body and headers. See
-[the migration guide](MIGRATING.md#administrative-rest-api-in-this-checkout) for additional
+[the migration guide](MIGRATING.md#administrative-rest-api) for additional
 before/after examples.
 
 Each entry in `rules`:
@@ -486,7 +472,7 @@ Send this representation to `PUT /__admin/mocks?path=%2Ftest%2Fendpoint`.
 
 ## Response sequences
 
-Available in this unreleased checkout. The
+New in 3.0. The
 [runnable sequence example](examples/test_v3_workflows.py) covers exhaustion, restart and
 snapshot restoration. Set `sequence` on a mock or on an individual rule:
 
@@ -561,7 +547,7 @@ Format 1 imports with sequences return `422`. See [snapshot semantics](#snapshot
 
 ## Record/replay
 
-Available in this unreleased checkout. The
+New in 3.0. The
 [runnable offline replay example](examples/test_v3_workflows.py) starts a disposable upstream,
 saves binary replies and cookies, then replays a snapshot after the upstream has stopped.
 Configure a mock with an upstream and explicit recording:
@@ -651,7 +637,7 @@ containing recording data return `422`. See [snapshot semantics](#snapshots-of-t
 
 ## Removed response caching
 
-Response caching is removed in this 3.0 checkout. `cache_time` is no longer a mock field,
+Response caching was removed in 3.0. `cache_time` is no longer a mock field,
 `clean_cache()` is absent from both clients, and `/__admin/cache` returns an administrative
 `404`. Passing `cache_time` to either client's configure/patch helper raises `TypeError` before
 sending a request; direct HTTP configuration returns `422`, including for null or zero values.
@@ -663,7 +649,7 @@ Snapshot imports accept legacy `cache_time: null` or `cache_time: 0` and discard
 settings. Any enabled or invalid cache setting returns `422` before mutation. Remove the field
 from the file, or migrate the test to record/replay; importing a snapshot never records an
 upstream response automatically. New storage representations and snapshot exports omit
-`cache_time`. Published 2.x continues to provide its existing caching API.
+`cache_time`. 2.x releases keep their caching API.
 
 ## Catching requests on `/<path>`
 
