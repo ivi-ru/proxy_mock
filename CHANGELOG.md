@@ -106,6 +106,8 @@ Fixes and documentation
 * Added runnable REST lifecycle, binary sequence, offline recording snapshot and async-client
   examples. The storefront scripts accept local URLs and a custom administrative prefix, so
   their HTTP behavior is tested without Docker as well as through the Compose CI check.
+* The release workflow no longer publishes a container image to GHCR: the registry package was
+  never publicly readable. Build the image from the repository as described in the README.
 * Development instructions, Docker and server CI checks select the `server` extra explicitly.
   Added isolated base/server wheel checks, including clients and fixtures against an external
   server.
